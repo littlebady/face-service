@@ -1,0 +1,7 @@
+﻿# Optional dependencies (install only when selected during setup)
+faiss-cpu>=1.8.0
+annoy>=1.17.3
+
+# Keep GPU heavy deps manual by default:
+# torch>=2.0.0
+# torchvision>=0.15.0

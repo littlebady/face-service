@@ -1,0 +1,2056 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能签到中心</title>
+  <style>
+    :root {
+      --bg: #edf1fa;
+      --panel: #ffffff;
+      --panel-soft: #f7f9ff;
+      --ink: #14213d;
+      --muted: #56637d;
+      --primary: #0f5ef7;
+      --primary-deep: #0a44b7;
+      --line: #d8e2f4;
+      --ok-bg: #e9fbf1;
+      --ok-ink: #0f7a3a;
+      --err-bg: #fff1f1;
+      --err-ink: #b42318;
+      --warn-bg: #fff8e8;
+      --warn-ink: #9a6700;
+      --shadow: 0 16px 42px rgba(15, 30, 74, 0.12);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 20% -10%, #dbe7ff 0%, transparent 60%),
+        radial-gradient(1200px 500px at 95% 0%, #d8f0ff 0%, transparent 55%),
+        var(--bg);
+      font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 22px 18px 40px;
+    }
+
+    .hero {
+      background: linear-gradient(120deg, #102f83 0%, #0f5ef7 48%, #2a86ff 100%);
+      color: #fff;
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(26px, 3vw, 38px);
+      letter-spacing: 0.6px;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      line-height: 1.7;
+      opacity: 0.95;
+      max-width: 900px;
+    }
+
+    .metrics {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(140px, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 14px;
+      padding: 12px;
+      backdrop-filter: blur(2px);
+    }
+
+    .metric .label {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .metric .value {
+      margin-top: 4px;
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(20, 33, 61, 0.06);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--panel-soft), #fff);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .panel-body {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    label {
+      font-size: 13px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    input, button, select {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      font-size: 14px;
+      padding: 11px 12px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(15, 94, 247, 0.12);
+    }
+
+    button {
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .12s ease, background .12s ease;
+    }
+
+    button:hover { background: var(--primary-deep); }
+    button:active { transform: translateY(1px); }
+    button.secondary {
+      background: #1d325d;
+    }
+
+    .row-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .status {
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      border: 1px solid transparent;
+    }
+
+    .status.info { background: #eff5ff; color: #1e4ecf; border-color: #d3e0ff; }
+    .status.ok { background: var(--ok-bg); color: var(--ok-ink); border-color: #c6efda; }
+    .status.err { background: var(--err-bg); color: var(--err-ink); border-color: #ffd0d0; }
+    .status.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: #ffe4a6; }
+    .api-config {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #ffe4a6;
+      background: #fff8e8;
+      color: #745300;
+    }
+
+    .api-config .api-row {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: 1fr 180px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .result-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .result-card img {
+      width: 112px;
+      height: 112px;
+      border-radius: 12px;
+      object-fit: cover;
+      background: #e9eef9;
+    }
+
+    .result-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .kv {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .history {
+      display: grid;
+      gap: 8px;
+      max-height: 420px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .history-item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fff;
+      display: grid;
+      grid-template-columns: 62px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .history-item img {
+      width: 62px;
+      height: 62px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: #ecf1ff;
+    }
+
+    .h-title {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    .h-meta {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .json-box {
+      border: 1px solid var(--line);
+      background: #0e172a;
+      color: #bfe4ff;
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 180px;
+      max-height: 300px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-top: -2px;
+    }
+
+    .switch-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .switch-line input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--primary);
+    }
+
+    .camera-box {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0f172a;
+      overflow: hidden;
+      width: min(640px, 100%);
+      aspect-ratio: 4 / 3;
+      margin: 0 auto;
+    }
+
+    .camera-box video,
+    .camera-box img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #0f172a;
+    }
+
+    .camera-box canvas {
+      display: none;
+    }
+
+    .camera-box img {
+      display: none;
+      z-index: 2;
+    }
+
+    .camera-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .liveness-box {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #f8faff;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .liveness-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .live-item {
+      border-radius: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .live-item .k {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .live-item .v {
+      margin-top: 3px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .v.live-pass { color: #0f7a3a; }
+    .v.live-wait { color: #9a6700; }
+    .v.live-running { color: #1d4ed8; }
+
+    @media (max-width: 1040px) {
+      .layout { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr 1fr 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      .grid-2, .grid-3, .row-actions, .camera-actions, .liveness-grid { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr; }
+      .result-card { grid-template-columns: 1fr; }
+      .result-card img { width: 100%; height: 180px; }
+      .history-item { grid-template-columns: 1fr; }
+      .history-item img { width: 100%; height: 140px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>智能签到中心</h1>
+      <p>面向比赛演示的完整签到页面：支持人脸注册、相似检索、围栏签到、定位辅助、历史记录与识别结果可视化。</p>
+      <div class="metrics">
+        <div class="metric"><div class="label">当前注册人数</div><div class="value" id="m-faces">-</div></div>
+        <div class="metric"><div class="label">最近签到记录</div><div class="value" id="m-checkins">-</div></div>
+        <div class="metric"><div class="label">最新签到人</div><div class="value" id="m-last">-</div></div>
+      </div>
+    </section>
+
+    <div id="status" class="status info">系统就绪，可开始签到操作。</div>
+    <div id="api-config" class="api-config">
+      当前以独立 HTML 模式运行，请填写后端 API 地址（示例：`http://127.0.0.1:8000` 或你的云服务器域名）。
+      <div class="api-row">
+        <input id="api-base-input" type="text" placeholder="http://127.0.0.1:8000" />
+        <button type="button" id="btn-save-api-base">保存地址</button>
+      </div>
+    </div>
+
+    <section class="layout" style="margin-top: 12px;">
+      <div style="display:grid; gap:14px;">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>签到操作区</h2>
+            <button type="button" class="secondary" id="btn-refresh">刷新看板</button>
+          </div>
+          <div class="panel-body">
+            <div>
+              <label>签到照片来源</label>
+              <div class="hint">为防止相册代签，签到仅支持“摄像头现场拍照”，不支持本地文件上传。</div>
+            </div>
+
+            <div class="camera-box">
+              <video id="camera-preview" autoplay playsinline muted></video>
+              <canvas id="camera-canvas"></canvas>
+              <img id="camera-shot" alt="拍照预览" />
+            </div>
+
+            <div class="camera-actions">
+              <button type="button" class="secondary" id="btn-camera-start">打开摄像头</button>
+              <button type="button" class="secondary" id="btn-camera-shot">拍照并用于签到</button>
+              <button type="button" class="secondary" id="btn-camera-stop">关闭摄像头</button>
+            </div>
+
+            <div class="liveness-box">
+              <div>
+                <label style="margin:0;">活体检测（随机动作挑战）</label>
+                <div class="hint">点击“打开摄像头”后，将自动开始活体检测。请按随机顺序完成动作（如眨眼、转头、张嘴、靠近镜头）。通过后 2 分钟内可签到。</div>
+                <div class="hint" id="live-debug">EAR: - / Yaw: - / Mouth: -</div>
+              </div>
+              <div class="liveness-grid">
+                <div class="live-item">
+                  <div class="k">总体状态</div>
+                  <div class="v live-wait" id="live-state">未检测</div>
+                </div>
+                <div class="live-item">
+                  <div class="k">当前挑战</div>
+                  <div class="v live-wait" id="live-blink">未开始</div>
+                </div>
+                <div class="live-item">
+                  <div class="k">挑战进度</div>
+                  <div class="v live-wait" id="live-shake">0 / 0</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div>
+                <label for="lat">纬度</label>
+                <input id="lat" type="number" step="0.000001" placeholder="如 30.123456" />
+              </div>
+              <div>
+                <label for="lng">经度</label>
+                <input id="lng" type="number" step="0.000001" placeholder="如 120.123456" />
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <button type="button" id="btn-locate">自动获取定位</button>
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div>
+                <label for="center-lat">围栏中心纬度</label>
+                <input id="center-lat" type="number" step="0.000001" placeholder="可留空" />
+              </div>
+              <div>
+                <label for="center-lng">围栏中心经度</label>
+                <input id="center-lng" type="number" step="0.000001" placeholder="可留空" />
+              </div>
+              <div>
+                <label for="radius-m">围栏半径(米)</label>
+                <input id="radius-m" type="number" step="1" value="200" />
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div>
+                <label for="threshold">识别阈值</label>
+                <input id="threshold" type="number" min="0" max="1" step="0.01" value="0.6" />
+              </div>
+              <div>
+                <label for="top-k">候选数量</label>
+                <input id="top-k" type="number" min="1" max="5" step="1" value="1" />
+              </div>
+              <div>
+                <label for="geofence-person">围栏推荐姓名</label>
+                <input id="geofence-person" type="text" placeholder="可留空，默认全局" />
+              </div>
+            </div>
+
+            <div class="switch-line">
+              <input id="auto-geofence" type="checkbox" checked />
+              <label for="auto-geofence" style="margin:0;">未填写围栏时自动根据历史记录推荐</label>
+            </div>
+
+            <div class="row-actions">
+              <button type="button" id="btn-suggest">一键推荐围栏</button>
+              <button type="button" id="btn-checkin">执行签到</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>人脸注册与检索</h2></div>
+          <div class="panel-body">
+            <div class="grid-2">
+              <div>
+                <label for="register-name">注册姓名</label>
+                <input id="register-name" type="text" placeholder="请输入姓名" />
+              </div>
+              <div>
+                <label for="register-file">注册照片</label>
+                <input id="register-file" type="file" accept="image/*" />
+              </div>
+            </div>
+            <button type="button" id="btn-register">提交注册</button>
+
+            <div class="grid-3" style="margin-top: 8px;">
+              <div>
+                <label for="search-file">检索照片</label>
+                <input id="search-file" type="file" accept="image/*" />
+              </div>
+              <div>
+                <label for="search-threshold">检索阈值</label>
+                <input id="search-threshold" type="number" min="0" max="1" step="0.01" value="0.6" />
+              </div>
+              <div>
+                <label for="search-top-k">Top-K</label>
+                <input id="search-top-k" type="number" min="1" max="10" step="1" value="5" />
+              </div>
+            </div>
+            <button type="button" id="btn-search">执行检索</button>
+          </div>
+        </article>
+      </div>
+
+      <div style="display:grid; gap:14px;">
+        <article class="panel">
+          <div class="panel-head"><h2>本次结果</h2></div>
+          <div class="panel-body" id="result-area">
+            <div class="hint">执行“签到 / 注册 / 检索”后，会在这里显示可视化结果。</div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>最近签到</h2></div>
+          <div class="panel-body">
+            <div class="history" id="checkin-history"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>已注册人脸</h2></div>
+          <div class="panel-body">
+            <div class="history" id="face-history"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>API 原始响应</h2></div>
+          <div class="panel-body">
+            <div class="json-box" id="json-box">{}</div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const el = {
+      mFaces: document.getElementById('m-faces'),
+      mCheckins: document.getElementById('m-checkins'),
+      mLast: document.getElementById('m-last'),
+      status: document.getElementById('status'),
+      apiConfig: document.getElementById('api-config'),
+      apiBaseInput: document.getElementById('api-base-input'),
+      jsonBox: document.getElementById('json-box'),
+      resultArea: document.getElementById('result-area'),
+      faceHistory: document.getElementById('face-history'),
+      checkinHistory: document.getElementById('checkin-history'),
+
+      cameraPreview: document.getElementById('camera-preview'),
+      cameraCanvas: document.getElementById('camera-canvas'),
+      cameraShot: document.getElementById('camera-shot'),
+      liveState: document.getElementById('live-state'),
+      liveBlink: document.getElementById('live-blink'),
+      liveShake: document.getElementById('live-shake'),
+      liveDebug: document.getElementById('live-debug'),
+      lat: document.getElementById('lat'),
+      lng: document.getElementById('lng'),
+      centerLat: document.getElementById('center-lat'),
+      centerLng: document.getElementById('center-lng'),
+      radiusM: document.getElementById('radius-m'),
+      threshold: document.getElementById('threshold'),
+      topK: document.getElementById('top-k'),
+      geofencePerson: document.getElementById('geofence-person'),
+      autoGeofence: document.getElementById('auto-geofence'),
+
+      registerName: document.getElementById('register-name'),
+      registerFile: document.getElementById('register-file'),
+
+      searchFile: document.getElementById('search-file'),
+      searchThreshold: document.getElementById('search-threshold'),
+      searchTopK: document.getElementById('search-top-k'),
+
+      btnLocate: document.getElementById('btn-locate'),
+      btnSuggest: document.getElementById('btn-suggest'),
+      btnCheckin: document.getElementById('btn-checkin'),
+      btnCameraStart: document.getElementById('btn-camera-start'),
+      btnCameraShot: document.getElementById('btn-camera-shot'),
+      btnCameraStop: document.getElementById('btn-camera-stop'),
+      btnSaveApiBase: document.getElementById('btn-save-api-base'),
+      btnRefresh: document.getElementById('btn-refresh'),
+      btnRegister: document.getElementById('btn-register'),
+      btnSearch: document.getElementById('btn-search'),
+    };
+
+    const isStandaloneHtml = window.location.protocol === 'file:';
+    const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
+    const MEDIAPIPE_VERSION = '20260413_3';
+    let apiBase = isStandaloneHtml ? (localStorage.getItem('face_api_base') || DEFAULT_API_BASE) : '';
+    let cameraStream = null;
+    let capturedBlob = null;
+    let capturedObjectUrl = null;
+    let livenessLoopToken = 0;
+    const LIVE_EXPIRE_MS = 3 * 60 * 1000;
+    const scriptPromises = {};
+
+    const LIVE_LEFT_EYE = [33, 160, 158, 133, 153, 144];
+    const LIVE_RIGHT_EYE = [362, 385, 387, 263, 373, 380];
+    const LIVE_LEFT_EYE_CORNER = 33;
+    const LIVE_RIGHT_EYE_CORNER = 263;
+    const LIVE_NOSE = 1;
+    const LIVE_UPPER_LIP = 13;
+    const LIVE_LOWER_LIP = 14;
+    const LIVE_LEFT_MOUTH_CORNER = 78;
+    const LIVE_RIGHT_MOUTH_CORNER = 308;
+    const LIVE_MODE = 'strict';
+    const LIVE_CHALLENGE_STEPS = LIVE_MODE === 'strict' ? 5 : 3;
+    const LIVE_CALIBRATION_FRAMES = LIVE_MODE === 'strict' ? 18 : 14;
+    const LIVE_STEP_TIMEOUT_MS = LIVE_MODE === 'strict' ? 3200 : 4500;
+    const LIVE_TOTAL_TIMEOUT_MS = LIVE_MODE === 'strict' ? 18500 : 16000;
+    const LIVE_MIN_TOTAL_MS = LIVE_MODE === 'strict' ? 4800 : 2600;
+    const LIVE_NEUTRAL_FRAMES = LIVE_MODE === 'strict' ? 5 : 4;
+    const LIVE_NEUTRAL_YAW_ABS = 0.05;
+    const LIVE_CLOSE_EAR_FACTOR = 0.72;
+    const LIVE_OPEN_EAR_FACTOR = 0.9;
+    const LIVE_STRICT_FREEZE_FRAMES = 24;
+    const LIVE_STRICT_MAX_MISSING_FRAMES = 16;
+    const LIVE_STRICT_FREEZE_DELTA = 0.0016;
+    const LIVE_EVIDENCE_FRAMES = 8;
+    const LIVE_EVIDENCE_INTERVAL_MS = 120;
+
+    const LIVE_ACTION_LIBRARY = {
+      blink: { label: '眨眼一次', prompt: '请快速眨眼一次' },
+      turn_left: { label: '向左转头', prompt: '请向你自己的左侧转头' },
+      turn_right: { label: '向右转头', prompt: '请向你自己的右侧转头' },
+      mouth_open: { label: '张嘴一次', prompt: '请张嘴后再闭合' },
+      move_closer: { label: '靠近镜头', prompt: '请向前靠近镜头一点点' },
+    };
+
+    const liveness = {
+      engineReady: false,
+      engine: null,
+      mode: LIVE_MODE,
+      running: false,
+      passed: false,
+      passedAt: 0,
+      failReason: '',
+      calibrating: false,
+      calibrationFrames: 0,
+      challengeActions: [],
+      challengeIndex: 0,
+      completedActions: [],
+      totalStartedAt: 0,
+      stepStartedAt: 0,
+      waitingNeutral: false,
+      neutralFrames: 0,
+      stepData: {},
+      eyeClosed: false,
+      blinkCount: 0,
+      earBaseline: 0,
+      earSampleCount: 0,
+      yawBaseline: 0,
+      yawSampleCount: 0,
+      mouthBaseline: 0,
+      mouthSampleCount: 0,
+      faceScaleBaseline: 0,
+      faceScaleSampleCount: 0,
+      currentEar: 0,
+      currentYaw: 0,
+      currentMouth: 0,
+      currentScale: 0,
+      challengeId: '',
+      challengeNonce: '',
+      challengeExpiresAt: 0,
+      missingFrames: 0,
+      motionAccumulator: 0,
+      motionSamples: 0,
+      freezeRun: 0,
+      maxFreezeRun: 0,
+      lastNoseX: null,
+      lastNoseY: null,
+      lastYaw: null,
+      yawMin: null,
+      yawMax: null,
+      mouthPeak: 0,
+      scalePeak: 0,
+      proof: null,
+      ticket: '',
+      ticketExpiresAt: 0,
+      ticketKeyHash: '',
+      antiSpoofScore: null,
+    };
+
+    function setStatus(message, type = 'info') {
+      el.status.className = `status ${type}`;
+      el.status.textContent = message;
+    }
+
+    function showJson(data) {
+      try {
+        el.jsonBox.textContent = JSON.stringify(data, null, 2);
+      } catch {
+        el.jsonBox.textContent = String(data);
+      }
+    }
+
+    function toApiUrl(url) {
+      const effectiveBase = isStandaloneHtml ? getEffectiveApiBase() : '';
+      if (!url) return '';
+      if (/^(https?:)?[/][/]/i.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
+        return url;
+      }
+      if (!url.startsWith('/')) {
+        return effectiveBase ? `${effectiveBase}/${url}` : `/${url}`;
+      }
+      return effectiveBase ? `${effectiveBase}${url}` : url;
+    }
+
+    async function parseResponse(response) {
+      const raw = await response.text();
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return { detail: raw || `${response.status} ${response.statusText}` };
+      }
+    }
+
+    async function fetchJson(url, options) {
+      const response = await fetch(toApiUrl(url), options);
+      const data = await parseResponse(response);
+      if (!response.ok) {
+        throw new Error(data.detail || `${response.status} ${response.statusText}`);
+      }
+      return data;
+    }
+
+    function resultCard(title, imageUrl, lines = []) {
+      const wrap = document.createElement('div');
+      wrap.className = 'result-card';
+      wrap.innerHTML = `
+        <img src="${toApiUrl(imageUrl)}" alt="result" />
+        <div>
+          <p class="result-title">${title}</p>
+          <div class="kv">${lines.map(line => `<div>${line}</div>`).join('')}</div>
+        </div>
+      `;
+      return wrap;
+    }
+
+    function renderResults(items) {
+      el.resultArea.innerHTML = '';
+      if (!items.length) {
+        el.resultArea.innerHTML = '<div class="hint">暂无结果。</div>';
+        return;
+      }
+      for (const item of items) {
+        el.resultArea.appendChild(item);
+      }
+    }
+
+    function renderHistory(container, items, builder) {
+      if (!items.length) {
+        container.innerHTML = '<div class="hint">暂无记录</div>';
+        return;
+      }
+      container.innerHTML = '';
+      for (const item of items) {
+        const node = document.createElement('div');
+        node.className = 'history-item';
+        node.innerHTML = builder(item);
+        container.appendChild(node);
+      }
+    }
+
+    function formatNum(value, digits = 4) {
+      if (value == null || Number.isNaN(Number(value))) return '-';
+      return Number(value).toFixed(digits);
+    }
+
+    async function getBrowserLocation() {
+      if (!navigator.geolocation) {
+        throw new Error('当前浏览器不支持定位');
+      }
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(pos.coords),
+          (err) => reject(new Error(err.message || '定位失败')),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      });
+    }
+
+    function applyFaceDetectInfo(targetLines, faceDetect) {
+      if (!faceDetect) return;
+      targetLines.push(`检测人脸数: ${faceDetect.face_count ?? '-'}`);
+      targetLines.push(`选脸策略: ${faceDetect.selected_strategy ?? '-'}`);
+      if (faceDetect.multiple_faces) {
+        targetLines.push(`提示: ${faceDetect.warning || '检测到多张人脸'}`);
+      }
+    }
+
+    function loadScriptOnce(src) {
+      if (scriptPromises[src]) return scriptPromises[src];
+      scriptPromises[src] = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`模型脚本加载失败: ${src}`));
+        document.head.appendChild(script);
+      });
+      return scriptPromises[src];
+    }
+
+    function normalizeApiBase(raw) {
+      let value = (raw || '').trim();
+      while (value.endsWith('/')) {
+        value = value.slice(0, -1);
+      }
+      return value;
+    }
+
+    function getEffectiveApiBase() {
+      if (!isStandaloneHtml) return '';
+      const typed = normalizeApiBase(el.apiBaseInput?.value || '');
+      if (/^https?:[/][/]/i.test(typed)) {
+        return typed;
+      }
+      return apiBase;
+    }
+
+    function mediapipeBaseUrl() {
+      if (isStandaloneHtml) {
+        return `${getEffectiveApiBase()}/static/mediapipe`;
+      }
+      return '/static/mediapipe';
+    }
+
+    async function ensureMediapipeLoaded() {
+      if (typeof FaceMesh === 'function') return;
+      const base = mediapipeBaseUrl();
+      await loadScriptOnce(`${base}/camera_utils/camera_utils.js?v=${MEDIAPIPE_VERSION}`);
+      await loadScriptOnce(`${base}/face_mesh/face_mesh.js?v=${MEDIAPIPE_VERSION}`);
+      if (typeof FaceMesh !== 'function') {
+        throw new Error('活体模块加载失败，请检查本地静态资源是否完整');
+      }
+    }
+
+    function setLiveClass(node, state) {
+      node.classList.remove('live-pass', 'live-wait', 'live-running');
+      if (state === 'pass') node.classList.add('live-pass');
+      else if (state === 'running') node.classList.add('live-running');
+      else node.classList.add('live-wait');
+    }
+
+    function randomChoice(items) {
+      if (!Array.isArray(items) || !items.length) return null;
+      return items[Math.floor(Math.random() * items.length)];
+    }
+
+    function shuffleInPlace(items) {
+      for (let i = items.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = items[i];
+        items[i] = items[j];
+        items[j] = tmp;
+      }
+      return items;
+    }
+
+    function actionLabel(actionKey) {
+      return LIVE_ACTION_LIBRARY[actionKey]?.label || actionKey;
+    }
+
+    function actionPrompt(actionKey) {
+      return LIVE_ACTION_LIBRARY[actionKey]?.prompt || actionLabel(actionKey);
+    }
+
+    function formatChallenge(actions) {
+      return actions.map((action, index) => `${index + 1}.${actionLabel(action)}`).join(' -> ');
+    }
+
+    function buildChallengeActions() {
+      const selected = [];
+      const seeds = [
+        randomChoice(['blink', 'mouth_open']),
+        randomChoice(['turn_left', 'turn_right']),
+        randomChoice(['move_closer', 'blink', 'mouth_open']),
+      ];
+      for (const item of seeds) {
+        if (item && !selected.includes(item)) selected.push(item);
+      }
+      const fallback = ['blink', 'turn_left', 'turn_right', 'mouth_open', 'move_closer'];
+      for (const item of fallback) {
+        if (selected.length >= LIVE_CHALLENGE_STEPS) break;
+        if (!selected.includes(item)) selected.push(item);
+      }
+      return shuffleInPlace(selected).slice(0, LIVE_CHALLENGE_STEPS);
+    }
+
+    async function fetchStrictLivenessChallenge() {
+      const data = await fetchJson('/checkins/liveness/challenge', { method: 'POST' });
+      if (!data?.ok) {
+        throw new Error(data?.reason || '严格活体挑战申请失败');
+      }
+      if (!Array.isArray(data.actions) || data.actions.length < 3) {
+        throw new Error('严格活体挑战动作配置异常');
+      }
+      if (!data.challenge_id || !data.nonce) {
+        throw new Error('严格活体挑战参数缺失');
+      }
+      return data;
+    }
+
+    function accumulateBaseline(prefix, value, minValue, maxValue, warmupSamples = 45, alpha = 0.02) {
+      if (!(value > minValue && value < maxValue)) return;
+      const baselineKey = `${prefix}Baseline`;
+      const sampleKey = `${prefix}SampleCount`;
+      if (liveness[baselineKey] <= 0) {
+        liveness[baselineKey] = value;
+      } else if (liveness[sampleKey] < warmupSamples) {
+        liveness[baselineKey] = (liveness[baselineKey] * liveness[sampleKey] + value) / (liveness[sampleKey] + 1);
+      } else {
+        liveness[baselineKey] = liveness[baselineKey] * (1 - alpha) + value * alpha;
+      }
+      liveness[sampleKey] += 1;
+    }
+
+    function refreshLivenessUi() {
+      const now = Date.now();
+      const freshPassed = liveness.passed && (now - liveness.passedAt <= LIVE_EXPIRE_MS);
+      if (!freshPassed && liveness.passed) {
+        liveness.passed = false;
+        liveness.failReason = '活体结果已过期，请重新检测';
+      }
+
+      if (liveness.passed) {
+        el.liveState.textContent = '已通过';
+        setLiveClass(el.liveState, 'pass');
+      } else if (liveness.running) {
+        el.liveState.textContent = liveness.calibrating ? '校准中' : '检测中';
+        setLiveClass(el.liveState, 'running');
+      } else if (liveness.failReason) {
+        el.liveState.textContent = '未通过';
+        setLiveClass(el.liveState, 'wait');
+      } else {
+        el.liveState.textContent = '未检测';
+        setLiveClass(el.liveState, 'wait');
+      }
+
+      const totalSteps = liveness.challengeActions.length || LIVE_CHALLENGE_STEPS;
+      const completed = liveness.completedActions.length;
+      if (liveness.passed) {
+        el.liveBlink.textContent = `挑战完成（${completed}/${totalSteps}）`;
+      } else if (liveness.running) {
+        if (liveness.calibrating) {
+          el.liveBlink.textContent = `正在校准（${Math.min(liveness.calibrationFrames, LIVE_CALIBRATION_FRAMES)}/${LIVE_CALIBRATION_FRAMES}）`;
+        } else {
+          const currentAction = liveness.challengeActions[liveness.challengeIndex];
+          const stepNo = Math.min(liveness.challengeIndex + 1, totalSteps);
+          const neutralHint = liveness.waitingNeutral ? '（请先回正）' : '';
+          el.liveBlink.textContent = `第${stepNo}/${totalSteps}步：${actionPrompt(currentAction)}${neutralHint}`;
+        }
+      } else if (liveness.failReason) {
+        el.liveBlink.textContent = `失败：${liveness.failReason}`;
+      } else {
+        el.liveBlink.textContent = '未开始';
+      }
+      setLiveClass(el.liveBlink, liveness.passed ? 'pass' : (liveness.running ? 'running' : 'wait'));
+
+      if (liveness.challengeActions.length) {
+        const progress = liveness.challengeActions
+          .map((action, index) => {
+            if (index < completed) return `✓${index + 1}.${actionLabel(action)}`;
+            if (liveness.running && !liveness.calibrating && index === liveness.challengeIndex) {
+              return `>${index + 1}.${actionLabel(action)}`;
+            }
+            return `·${index + 1}.${actionLabel(action)}`;
+          })
+          .join(' ');
+        const remainMs = liveness.running && liveness.totalStartedAt > 0
+          ? Math.max(0, LIVE_TOTAL_TIMEOUT_MS - (now - liveness.totalStartedAt))
+          : 0;
+        const remainText = liveness.running && liveness.totalStartedAt > 0
+          ? ` / 剩余 ${Math.ceil(remainMs / 1000)}s`
+          : '';
+        el.liveShake.textContent = `进度 ${completed}/${totalSteps}${remainText}：${progress}`;
+      } else {
+        el.liveShake.textContent = '0 / 0';
+      }
+      setLiveClass(el.liveShake, liveness.passed ? 'pass' : (liveness.running ? 'running' : 'wait'));
+
+      const earText = liveness.earSampleCount ? liveness.currentEar.toFixed(3) : '-';
+      const yawText = liveness.yawSampleCount ? liveness.currentYaw.toFixed(3) : '-';
+      const mouthText = liveness.mouthSampleCount ? liveness.currentMouth.toFixed(3) : '-';
+      const scaleText = liveness.faceScaleSampleCount ? liveness.currentScale.toFixed(3) : '-';
+      const earBase = liveness.earBaseline ? liveness.earBaseline.toFixed(3) : '-';
+      const yawBase = liveness.yawBaseline ? liveness.yawBaseline.toFixed(3) : '-';
+      const mouthBase = liveness.mouthBaseline ? liveness.mouthBaseline.toFixed(3) : '-';
+      const motionText = liveness.motionSamples
+        ? (liveness.motionAccumulator / Math.max(1, liveness.motionSamples)).toFixed(4)
+        : '-';
+      const antiText = Number.isFinite(liveness.antiSpoofScore) ? liveness.antiSpoofScore.toFixed(3) : '-';
+      const ticketText = liveness.ticket ? 'Y' : 'N';
+      el.liveDebug.textContent = `EAR: ${earText} / YawΔ: ${yawText} / Mouth: ${mouthText} / Scale: ${scaleText} / 基线 EAR:${earBase} Yaw:${yawBase} Mouth:${mouthBase} / Motion:${motionText} Missing:${liveness.missingFrames} Freeze:${liveness.maxFreezeRun} / Anti:${antiText} Ticket:${ticketText}`;
+    }
+
+    function resetLivenessProgress() {
+      liveness.mode = LIVE_MODE;
+      liveness.running = false;
+      liveness.passed = false;
+      liveness.passedAt = 0;
+      liveness.failReason = '';
+      liveness.calibrating = false;
+      liveness.calibrationFrames = 0;
+      liveness.challengeActions = [];
+      liveness.challengeIndex = 0;
+      liveness.completedActions = [];
+      liveness.totalStartedAt = 0;
+      liveness.stepStartedAt = 0;
+      liveness.waitingNeutral = false;
+      liveness.neutralFrames = 0;
+      liveness.stepData = {};
+      liveness.eyeClosed = false;
+      liveness.blinkCount = 0;
+      liveness.earBaseline = 0;
+      liveness.earSampleCount = 0;
+      liveness.yawBaseline = 0;
+      liveness.yawSampleCount = 0;
+      liveness.mouthBaseline = 0;
+      liveness.mouthSampleCount = 0;
+      liveness.faceScaleBaseline = 0;
+      liveness.faceScaleSampleCount = 0;
+      liveness.currentEar = 0;
+      liveness.currentYaw = 0;
+      liveness.currentMouth = 0;
+      liveness.currentScale = 0;
+      liveness.challengeId = '';
+      liveness.challengeNonce = '';
+      liveness.challengeExpiresAt = 0;
+      liveness.missingFrames = 0;
+      liveness.motionAccumulator = 0;
+      liveness.motionSamples = 0;
+      liveness.freezeRun = 0;
+      liveness.maxFreezeRun = 0;
+      liveness.lastNoseX = null;
+      liveness.lastNoseY = null;
+      liveness.lastYaw = null;
+      liveness.yawMin = null;
+      liveness.yawMax = null;
+      liveness.mouthPeak = 0;
+      liveness.scalePeak = 0;
+      liveness.proof = null;
+      liveness.ticket = '';
+      liveness.ticketExpiresAt = 0;
+      liveness.ticketKeyHash = '';
+      liveness.antiSpoofScore = null;
+      refreshLivenessUi();
+    }
+
+    function liveDistance(a, b) {
+      if (!a || !b) return 0;
+      const dx = (a.x || 0) - (b.x || 0);
+      const dy = (a.y || 0) - (b.y || 0);
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function computeEar(landmarks, indices) {
+      const p1 = landmarks[indices[0]];
+      const p2 = landmarks[indices[1]];
+      const p3 = landmarks[indices[2]];
+      const p4 = landmarks[indices[3]];
+      const p5 = landmarks[indices[4]];
+      const p6 = landmarks[indices[5]];
+      const horizontal = liveDistance(p1, p4) || 1e-6;
+      return (liveDistance(p2, p6) + liveDistance(p3, p5)) / (2 * horizontal);
+    }
+
+    function computeMouthOpenRatio(landmarks) {
+      const upper = landmarks[LIVE_UPPER_LIP];
+      const lower = landmarks[LIVE_LOWER_LIP];
+      const leftCorner = landmarks[LIVE_LEFT_MOUTH_CORNER];
+      const rightCorner = landmarks[LIVE_RIGHT_MOUTH_CORNER];
+      const mouthWidth = liveDistance(leftCorner, rightCorner) || 1e-6;
+      return liveDistance(upper, lower) / mouthWidth;
+    }
+
+    function updateStrictMotionMetrics({ nose, yawDelta, mouthRatio, faceScale }) {
+      if (!nose) return;
+
+      if (liveness.yawMin == null || yawDelta < liveness.yawMin) {
+        liveness.yawMin = yawDelta;
+      }
+      if (liveness.yawMax == null || yawDelta > liveness.yawMax) {
+        liveness.yawMax = yawDelta;
+      }
+      if (mouthRatio > liveness.mouthPeak) {
+        liveness.mouthPeak = mouthRatio;
+      }
+      if (faceScale > liveness.scalePeak) {
+        liveness.scalePeak = faceScale;
+      }
+
+      if (Number.isFinite(liveness.lastNoseX) && Number.isFinite(liveness.lastNoseY)) {
+        const dx = Math.abs((nose.x || 0) - liveness.lastNoseX);
+        const dy = Math.abs((nose.y || 0) - liveness.lastNoseY);
+        const yawDiff = liveness.lastYaw == null ? 0 : Math.abs(yawDelta - liveness.lastYaw);
+        const delta = dx + dy + yawDiff * 0.5;
+
+        liveness.motionAccumulator += delta;
+        liveness.motionSamples += 1;
+
+        if (delta < LIVE_STRICT_FREEZE_DELTA) {
+          liveness.freezeRun += 1;
+        } else {
+          liveness.freezeRun = 0;
+        }
+        if (liveness.freezeRun > liveness.maxFreezeRun) {
+          liveness.maxFreezeRun = liveness.freezeRun;
+        }
+      }
+
+      liveness.lastNoseX = nose.x || 0;
+      liveness.lastNoseY = nose.y || 0;
+      liveness.lastYaw = yawDelta;
+    }
+
+    function buildLivenessProof(durationMs) {
+      const yawSpan = (liveness.yawMax != null && liveness.yawMin != null)
+        ? liveness.yawMax - liveness.yawMin
+        : 0;
+      const mouthPeakGain = liveness.mouthPeak - (liveness.mouthBaseline || 0);
+      const scalePeakGain = liveness.scalePeak - (liveness.faceScaleBaseline || 0);
+      const motionScore = liveness.motionSamples > 0
+        ? liveness.motionAccumulator / liveness.motionSamples
+        : 0;
+      return {
+        mode: LIVE_MODE,
+        challenge_id: liveness.challengeId,
+        nonce: liveness.challengeNonce,
+        actions: liveness.completedActions.slice(),
+        started_at_ms: liveness.totalStartedAt,
+        passed_at_ms: Date.now(),
+        duration_ms: durationMs,
+        metrics: {
+          motion_score: Number(motionScore.toFixed(6)),
+          missing_frames: liveness.missingFrames,
+          max_freeze_run: liveness.maxFreezeRun,
+          blink_count: liveness.blinkCount,
+          yaw_span: Number(yawSpan.toFixed(6)),
+          mouth_peak_gain: Number(mouthPeakGain.toFixed(6)),
+          scale_peak_gain: Number(scalePeakGain.toFixed(6)),
+        },
+      };
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function sha256HexOfBlob(blob) {
+      if (!window.crypto || !window.crypto.subtle) {
+        throw new Error('当前浏览器环境不支持 WebCrypto SHA-256，请使用最新 Chrome/Edge 并通过 localhost 打开页面');
+      }
+      const buffer = await blob.arrayBuffer();
+      const digest = await crypto.subtle.digest('SHA-256', buffer);
+      const bytes = new Uint8Array(digest);
+      let hex = '';
+      for (const b of bytes) {
+        hex += b.toString(16).padStart(2, '0');
+      }
+      return hex;
+    }
+
+    async function captureEvidenceBurst(frameCount = LIVE_EVIDENCE_FRAMES, intervalMs = LIVE_EVIDENCE_INTERVAL_MS) {
+      if (!cameraStream || el.cameraPreview.readyState < 2) {
+        throw new Error('摄像头未就绪，请先开启摄像头并完成拍照后再做严格复核');
+      }
+      const video = el.cameraPreview;
+      const canvas = el.cameraCanvas;
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      const frames = [];
+      for (let i = 0; i < frameCount; i += 1) {
+        ctx.drawImage(video, 0, 0, width, height);
+        const frameBlob = await new Promise((resolve) => {
+          canvas.toBlob(resolve, 'image/jpeg', 0.86);
+        });
+        if (frameBlob) {
+          frames.push(frameBlob);
+        }
+        if (i < frameCount - 1) {
+          await sleep(intervalMs);
+        }
+      }
+      return frames;
+    }
+
+    async function ensureStrictLivenessTicket(imagePayload) {
+      if (LIVE_MODE !== 'strict') return '';
+      if (!liveness.proof || !liveness.passed) {
+        throw new Error('未完成有效活体检测，请先完成随机动作挑战');
+      }
+      const keyHash = await sha256HexOfBlob(imagePayload.data);
+      const now = Date.now();
+      if (
+        liveness.ticket
+        && liveness.ticketKeyHash === keyHash
+        && now < (liveness.ticketExpiresAt - 2000)
+      ) {
+        return liveness.ticket;
+      }
+
+      const evidenceFrames = await captureEvidenceBurst();
+      if (!evidenceFrames.length) {
+        throw new Error('证据帧采集失败，请重试');
+      }
+
+      const formData = new FormData();
+      formData.append('proof', JSON.stringify(liveness.proof));
+      formData.append('key_image_hash', keyHash);
+      formData.append('key_image', imagePayload.data, imagePayload.name);
+      evidenceFrames.forEach((blob, idx) => {
+        formData.append('evidence_frames', blob, `evidence-${idx + 1}.jpg`);
+      });
+
+      const verifyResp = await fetchJson('/checkins/liveness/verify', { method: 'POST', body: formData });
+      if (!verifyResp?.ok || !verifyResp?.liveness_ticket) {
+        throw new Error(verifyResp?.reason || '严格活体复核失败');
+      }
+
+      liveness.ticket = verifyResp.liveness_ticket;
+      liveness.ticketExpiresAt = Number(verifyResp?.session?.expires_at_ms || 0);
+      liveness.ticketKeyHash = keyHash;
+      liveness.antiSpoofScore = Number(verifyResp?.anti_spoof?.live_score ?? NaN);
+      return liveness.ticket;
+    }
+
+    function isNeutralPose(yawDelta, mouthRatio) {
+      const baseMouth = liveness.mouthBaseline > 0 ? liveness.mouthBaseline : 0.04;
+      const mouthLimit = Math.max(baseMouth * 1.22, baseMouth + 0.015, 0.07);
+      return Math.abs(yawDelta) <= LIVE_NEUTRAL_YAW_ABS && mouthRatio <= mouthLimit;
+    }
+
+    function failLiveness(reason) {
+      liveness.running = false;
+      liveness.passed = false;
+      liveness.failReason = reason;
+      liveness.proof = null;
+      liveness.ticket = '';
+      liveness.ticketExpiresAt = 0;
+      liveness.ticketKeyHash = '';
+      liveness.antiSpoofScore = null;
+      refreshLivenessUi();
+      setStatus(`活体检测失败：${reason}`, 'warn');
+    }
+
+    function handleCurrentChallengeStep(actionKey, metrics) {
+      const stepData = liveness.stepData || {};
+      const baselineEar = liveness.earBaseline > 0 ? liveness.earBaseline : 0.26;
+      const closeThreshold = baselineEar * LIVE_CLOSE_EAR_FACTOR;
+      const openThreshold = baselineEar * LIVE_OPEN_EAR_FACTOR;
+
+      if (actionKey === 'blink') {
+        stepData.minEar = stepData.minEar == null ? metrics.ear : Math.min(stepData.minEar, metrics.ear);
+        if (metrics.ear < closeThreshold) {
+          stepData.closedFrames = (stepData.closedFrames || 0) + 1;
+        }
+        if ((stepData.closedFrames || 0) >= 2) {
+          stepData.closed = true;
+        }
+        const depth = baselineEar - (stepData.minEar == null ? baselineEar : stepData.minEar);
+        if (stepData.closed && metrics.ear > openThreshold && depth > Math.max(0.025, baselineEar * 0.16)) {
+          liveness.blinkCount += 1;
+          liveness.stepData = {};
+          return true;
+        }
+      } else if (actionKey === 'turn_left') {
+        const threshold = Math.max(0.10, Math.abs(liveness.yawBaseline) * 0.25 + 0.09);
+        // 对用户而言“向左转头”在前摄镜像预览下通常表现为 yawDelta 增大。
+        if (metrics.yawDelta > threshold) {
+          stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+        } else {
+          stepData.holdFrames = 0;
+        }
+        if ((stepData.holdFrames || 0) >= 2) {
+          liveness.stepData = {};
+          return true;
+        }
+      } else if (actionKey === 'turn_right') {
+        const threshold = Math.max(0.10, Math.abs(liveness.yawBaseline) * 0.25 + 0.09);
+        if (metrics.yawDelta < -threshold) {
+          stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+        } else {
+          stepData.holdFrames = 0;
+        }
+        if ((stepData.holdFrames || 0) >= 2) {
+          liveness.stepData = {};
+          return true;
+        }
+      } else if (actionKey === 'mouth_open') {
+        const baseMouth = liveness.mouthBaseline > 0 ? liveness.mouthBaseline : 0.045;
+        const openThresholdMouth = Math.max(baseMouth * 1.45, baseMouth + 0.022, 0.072);
+        const closeThresholdMouth = Math.max(baseMouth * 1.16, baseMouth + 0.01, 0.055);
+        stepData.peakMouth = stepData.peakMouth == null ? metrics.mouth : Math.max(stepData.peakMouth, metrics.mouth);
+        if (metrics.mouth > openThresholdMouth) {
+          stepData.openFrames = (stepData.openFrames || 0) + 1;
+        }
+        if ((stepData.openFrames || 0) >= 2) {
+          stepData.opened = true;
+        }
+        const peakGain = (stepData.peakMouth == null ? baseMouth : stepData.peakMouth) - baseMouth;
+        if (stepData.opened && metrics.mouth < closeThresholdMouth && peakGain > Math.max(0.018, baseMouth * 0.35)) {
+          liveness.stepData = {};
+          return true;
+        }
+      } else if (actionKey === 'move_closer') {
+        const baseScale = liveness.faceScaleBaseline > 0 ? liveness.faceScaleBaseline : metrics.faceScale;
+        const targetScale = Math.max(baseScale * 1.09, baseScale + 0.008);
+        if (metrics.faceScale > targetScale) {
+          stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+        } else {
+          stepData.holdFrames = Math.max(0, (stepData.holdFrames || 0) - 1);
+        }
+        if ((stepData.holdFrames || 0) >= 2) {
+          liveness.stepData = {};
+          return true;
+        }
+      }
+
+      liveness.stepData = stepData;
+      return false;
+    }
+
+    function onLivenessResults(results) {
+      if (!liveness.running) return;
+      if (LIVE_MODE === 'strict' && liveness.challengeExpiresAt > 0 && Date.now() > liveness.challengeExpiresAt) {
+        failLiveness('严格活体挑战已过期，请重新开始');
+        return;
+      }
+      const landmarks = results?.multiFaceLandmarks?.[0];
+      if (!landmarks) {
+        liveness.missingFrames += 1;
+        if (
+          LIVE_MODE === 'strict'
+          && !liveness.calibrating
+          && liveness.missingFrames > LIVE_STRICT_MAX_MISSING_FRAMES
+        ) {
+          failLiveness('人脸跟踪中断次数过多，活体验证失败');
+          return;
+        }
+        el.liveDebug.textContent = '未检测到人脸，请正对镜头并靠近一点';
+        refreshLivenessUi();
+        return;
+      }
+      liveness.missingFrames = Math.max(0, liveness.missingFrames - 1);
+
+      const leftEar = computeEar(landmarks, LIVE_LEFT_EYE);
+      const rightEar = computeEar(landmarks, LIVE_RIGHT_EYE);
+      const avgEar = (leftEar + rightEar) / 2;
+      liveness.currentEar = avgEar;
+      accumulateBaseline('ear', avgEar, 0.12, 0.5);
+
+      const leftEye = landmarks[LIVE_LEFT_EYE_CORNER];
+      const rightEye = landmarks[LIVE_RIGHT_EYE_CORNER];
+      const nose = landmarks[LIVE_NOSE];
+      const eyeWidth = Math.abs((rightEye?.x || 0) - (leftEye?.x || 0)) || 1e-6;
+      const centerX = ((leftEye?.x || 0) + (rightEye?.x || 0)) / 2;
+      const yawRatio = ((nose?.x || 0) - centerX) / eyeWidth;
+      if (liveness.yawSampleCount === 0 && liveness.yawBaseline === 0) {
+        liveness.yawBaseline = yawRatio;
+      }
+      const yawGap = Math.abs(yawRatio - liveness.yawBaseline);
+      if (yawGap < 0.1 || liveness.yawSampleCount < 14) {
+        accumulateBaseline('yaw', yawRatio, -0.45, 0.45, 45, 0.015);
+      }
+      const yawDelta = yawRatio - (liveness.yawBaseline || 0);
+      liveness.currentYaw = yawDelta;
+
+      const mouthRatio = computeMouthOpenRatio(landmarks);
+      if (liveness.mouthSampleCount === 0 && liveness.mouthBaseline === 0) {
+        liveness.mouthBaseline = mouthRatio;
+      }
+      const mouthUpdateLimit = Math.max((liveness.mouthBaseline || 0.04) * 1.35, 0.12);
+      if (mouthRatio > 0 && mouthRatio < mouthUpdateLimit) {
+        accumulateBaseline('mouth', mouthRatio, 0.01, 0.3);
+      }
+      liveness.currentMouth = mouthRatio;
+
+      if (eyeWidth > 0.03 && eyeWidth < 0.5 && Math.abs(yawDelta) < 0.2) {
+        accumulateBaseline('faceScale', eyeWidth, 0.03, 0.5, 50, 0.015);
+      }
+      liveness.currentScale = eyeWidth;
+      updateStrictMotionMetrics({
+        nose,
+        yawDelta,
+        mouthRatio,
+        faceScale: eyeWidth,
+      });
+      if (LIVE_MODE === 'strict' && !liveness.calibrating && liveness.freezeRun >= LIVE_STRICT_FREEZE_FRAMES) {
+        failLiveness('画面连续静止，疑似重放，请重试');
+        return;
+      }
+
+      if (liveness.calibrating) {
+        const baselineReady = liveness.earSampleCount >= 6
+          && liveness.yawSampleCount >= 6
+          && liveness.mouthSampleCount >= 6
+          && liveness.faceScaleSampleCount >= 6;
+        if (baselineReady) {
+          liveness.calibrationFrames += 1;
+        }
+        if (liveness.calibrationFrames >= LIVE_CALIBRATION_FRAMES) {
+          liveness.calibrating = false;
+          liveness.totalStartedAt = Date.now();
+          liveness.stepStartedAt = liveness.totalStartedAt;
+          liveness.stepData = {};
+          setStatus(`活体检测中：请按顺序完成 ${formatChallenge(liveness.challengeActions)}`, 'info');
+        }
+        refreshLivenessUi();
+        return;
+      }
+
+      if (!liveness.totalStartedAt) {
+        liveness.totalStartedAt = Date.now();
+      }
+      if (!liveness.stepStartedAt) {
+        liveness.stepStartedAt = Date.now();
+      }
+
+      const now = Date.now();
+      if (now - liveness.totalStartedAt > LIVE_TOTAL_TIMEOUT_MS) {
+        failLiveness('总时长超时，请重新开始');
+        return;
+      }
+      if (now - liveness.stepStartedAt > LIVE_STEP_TIMEOUT_MS) {
+        failLiveness('当前动作超时，请重新开始');
+        return;
+      }
+
+      if (liveness.waitingNeutral) {
+        if (isNeutralPose(yawDelta, mouthRatio)) {
+          liveness.neutralFrames += 1;
+          if (liveness.neutralFrames >= LIVE_NEUTRAL_FRAMES) {
+            liveness.waitingNeutral = false;
+            liveness.neutralFrames = 0;
+            liveness.stepData = {};
+            liveness.stepStartedAt = Date.now();
+          }
+        } else {
+          liveness.neutralFrames = 0;
+        }
+        refreshLivenessUi();
+        return;
+      }
+
+      const currentAction = liveness.challengeActions[liveness.challengeIndex];
+      if (!currentAction) {
+        failLiveness('挑战状态异常，请重试');
+        return;
+      }
+
+      const completed = handleCurrentChallengeStep(currentAction, {
+        ear: avgEar,
+        yawDelta,
+        mouth: mouthRatio,
+        faceScale: eyeWidth,
+      });
+      if (completed) {
+        liveness.completedActions.push(currentAction);
+        liveness.challengeIndex += 1;
+        liveness.stepStartedAt = Date.now();
+        if (liveness.challengeIndex >= liveness.challengeActions.length) {
+          const duration = Date.now() - liveness.totalStartedAt;
+          if (duration < LIVE_MIN_TOTAL_MS) {
+            failLiveness('动作完成过快，请按提示重新检测');
+            return;
+          }
+          liveness.proof = buildLivenessProof(duration);
+          if (LIVE_MODE === 'strict' && (!liveness.proof?.challenge_id || !liveness.proof?.nonce)) {
+            failLiveness('严格活体证明生成失败，请重新开始');
+            return;
+          }
+          liveness.running = false;
+          liveness.passed = true;
+          liveness.passedAt = Date.now();
+          liveness.failReason = '';
+          setStatus('活体检测通过，请在 2 分钟内完成拍照并签到。', 'ok');
+        } else {
+          liveness.waitingNeutral = true;
+          liveness.neutralFrames = 0;
+          setStatus(
+            `已完成 ${liveness.completedActions.length}/${liveness.challengeActions.length}，请回正后继续`,
+            'info'
+          );
+        }
+      }
+
+      refreshLivenessUi();
+    }
+
+    async function ensureLivenessEngine() {
+      await ensureMediapipeLoaded();
+      if (liveness.engineReady && liveness.engine) return;
+      const base = mediapipeBaseUrl();
+      const mesh = new FaceMesh({
+        locateFile: (file) => {
+          let resolved = file;
+          // 强制回退到非 SIMD 版本，规避部分浏览器/缓存环境下 SIMD wasm 解析失败问题。
+          if (resolved.includes('simd_wasm_bin')) {
+            resolved = resolved.replace('simd_wasm_bin', 'wasm_bin');
+          }
+          return `${base}/face_mesh/${resolved}?v=${MEDIAPIPE_VERSION}`;
+        },
+      });
+      mesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+      mesh.onResults(onLivenessResults);
+      liveness.engine = mesh;
+      liveness.engineReady = true;
+    }
+
+    async function runLivenessLoop(token) {
+      if (!liveness.running || token !== livenessLoopToken) return;
+      if (!liveness.engine || !cameraStream || el.cameraPreview.readyState < 2) {
+        requestAnimationFrame(() => runLivenessLoop(token));
+        return;
+      }
+      try {
+        await liveness.engine.send({ image: el.cameraPreview });
+      } catch (error) {
+        liveness.running = false;
+        refreshLivenessUi();
+        const msg = String(error?.message || error || '');
+        if (msg.includes('WebAssembly.instantiate')) {
+          setStatus('活体引擎加载失败（WASM）。请 Ctrl+F5 强制刷新后重试；若仍失败，先关闭页面再重新打开。', 'err');
+        } else {
+          setStatus(error?.message || '活体检测失败，请重试', 'err');
+        }
+        return;
+      }
+      if (liveness.running && token === livenessLoopToken) {
+        requestAnimationFrame(() => runLivenessLoop(token));
+      }
+    }
+
+    async function startLivenessCheck() {
+      resetLivenessProgress();
+      if (LIVE_MODE === 'strict') {
+        const challenge = await fetchStrictLivenessChallenge();
+        liveness.challengeActions = challenge.actions.slice();
+        liveness.challengeId = String(challenge.challenge_id || '');
+        liveness.challengeNonce = String(challenge.nonce || '');
+        liveness.challengeExpiresAt = Number(challenge.expires_at_ms) || 0;
+      } else {
+        liveness.challengeActions = buildChallengeActions();
+      }
+      liveness.calibrating = true;
+      liveness.calibrationFrames = 0;
+      liveness.challengeIndex = 0;
+      liveness.completedActions = [];
+      liveness.totalStartedAt = 0;
+      liveness.stepStartedAt = 0;
+      liveness.waitingNeutral = false;
+      liveness.neutralFrames = 0;
+      liveness.stepData = {};
+      liveness.failReason = '';
+      liveness.proof = null;
+      liveness.running = true;
+      refreshLivenessUi();
+      const challengeText = formatChallenge(liveness.challengeActions);
+      const modeLabel = LIVE_MODE === 'strict' ? '严格模式' : '增强模式';
+      setStatus(
+        `正在启动活体检测（${modeLabel}：${challengeText}），资源地址：${mediapipeBaseUrl()}`,
+        'info'
+      );
+      try {
+        await startCamera(false);
+        await ensureLivenessEngine();
+      } catch (error) {
+        liveness.running = false;
+        refreshLivenessUi();
+        throw error;
+      }
+      // startCamera() 内部会先 stopCameraStream()，会把 running 置为 false；
+      // 这里需要显式恢复为 true，确保检测循环真正开始。
+      liveness.running = true;
+      livenessLoopToken += 1;
+      const currentToken = livenessLoopToken;
+      refreshLivenessUi();
+      setStatus(`活体检测校准中（${modeLabel}）：${challengeText}`, 'info');
+      runLivenessLoop(currentToken);
+    }
+
+    function initStandaloneMode() {
+      if (!isStandaloneHtml) return;
+      el.apiConfig.style.display = 'block';
+      el.apiBaseInput.value = apiBase;
+      setStatus(`独立 HTML 模式：当前 API 地址为 ${apiBase}，活体模型由该地址的 /static 提供。`, 'warn');
+    }
+
+    function stopCameraStream() {
+      liveness.running = false;
+      livenessLoopToken += 1;
+      refreshLivenessUi();
+      if (!cameraStream) return;
+      for (const track of cameraStream.getTracks()) {
+        track.stop();
+      }
+      cameraStream = null;
+      el.cameraPreview.srcObject = null;
+    }
+
+    async function startCamera(resetLiveness = true) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('当前浏览器不支持摄像头访问，请使用支持摄像头的浏览器');
+      }
+      stopCameraStream();
+      if (capturedObjectUrl) {
+        URL.revokeObjectURL(capturedObjectUrl);
+        capturedObjectUrl = null;
+      }
+      capturedBlob = null;
+      el.cameraShot.style.display = 'none';
+      if (resetLiveness) {
+        resetLivenessProgress();
+      }
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      el.cameraPreview.srcObject = cameraStream;
+      await el.cameraPreview.play();
+      setStatus('摄像头已开启，请保持正脸后点击拍照。', 'ok');
+    }
+
+    async function captureFromCamera() {
+      if (!cameraStream) {
+        await startCamera();
+      }
+      const video = el.cameraPreview;
+      const canvas = el.cameraCanvas;
+      const width = video.videoWidth || 1280;
+      const height = video.videoHeight || 720;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, width, height);
+
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.92);
+      });
+      if (!blob) {
+        throw new Error('拍照失败，请重试');
+      }
+      capturedBlob = blob;
+      if (capturedObjectUrl) {
+        URL.revokeObjectURL(capturedObjectUrl);
+      }
+      capturedObjectUrl = URL.createObjectURL(blob);
+      el.cameraShot.src = capturedObjectUrl;
+      el.cameraShot.style.display = 'block';
+      liveness.ticket = '';
+      liveness.ticketExpiresAt = 0;
+      liveness.ticketKeyHash = '';
+      liveness.antiSpoofScore = null;
+      setStatus('拍照成功，本次签到将使用刚拍的照片。', 'ok');
+    }
+
+    function resolveCheckinImage() {
+      if (!capturedBlob) throw new Error('请先使用摄像头拍照');
+      return { data: capturedBlob, name: `checkin-${Date.now()}.jpg` };
+    }
+
+    async function refreshDashboard() {
+      const [facesResp, checkinsResp] = await Promise.all([
+        fetchJson('/faces?limit=12'),
+        fetchJson('/checkins?limit=12'),
+      ]);
+
+      const faces = facesResp.faces || [];
+      const records = checkinsResp.records || [];
+      const latestSuccess = records.find((x) => x.status === 'success');
+
+      el.mFaces.textContent = String(faces.length);
+      el.mCheckins.textContent = String(records.length);
+      el.mLast.textContent = latestSuccess?.person_name || '-';
+
+      renderHistory(el.faceHistory, faces, (item) => `
+        <img src="${toApiUrl(item.image_url)}" alt="${item.person_name || ''}" />
+        <div>
+          <div class="h-title">${item.person_name || '-'}</div>
+          <div class="h-meta">ID: ${item.face_id || '-'}</div>
+          <div class="h-meta">${item.create_time || ''}</div>
+        </div>
+      `);
+
+      renderHistory(el.checkinHistory, records, (item) => `
+        <img src="${toApiUrl(item.capture_image_url || item.matched_image_url || '')}" alt="record" />
+        <div>
+          <div class="h-title">${item.person_name || '未命中'} / ${item.status}</div>
+          <div class="h-meta">相似度: ${item.similarity == null ? '-' : Number(item.similarity).toFixed(4)}</div>
+          <div class="h-meta">${item.reason || item.create_time || ''}</div>
+        </div>
+      `);
+    }
+
+    async function handleRegister() {
+      const name = el.registerName.value.trim();
+      const file = el.registerFile.files?.[0];
+      if (!name) throw new Error('请输入注册姓名');
+      if (!file) throw new Error('请选择注册照片');
+
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('file', file);
+
+      const data = await fetchJson('/faces/register', { method: 'POST', body: formData });
+      const lines = [
+        `姓名: ${data.face?.person_name || name}`,
+        `人脸ID: ${data.face_id || '-'}`,
+      ];
+      applyFaceDetectInfo(lines, data.face_detect);
+
+      renderResults([
+        resultCard('注册成功', data.face?.image_url, lines),
+      ]);
+      showJson(data);
+      setStatus('注册成功，已写入人脸库。', data.face_detect?.multiple_faces ? 'warn' : 'ok');
+      await refreshDashboard();
+    }
+
+    async function handleSearch() {
+      const file = el.searchFile.files?.[0];
+      if (!file) throw new Error('请选择检索照片');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('threshold', String(Number(el.searchThreshold.value) || 0.6));
+      formData.append('top_k', String(Number(el.searchTopK.value) || 5));
+
+      const data = await fetchJson('/faces/search', { method: 'POST', body: formData });
+      const cards = [];
+      if (!data.results?.length) {
+        const lines = ['未找到满足阈值的人脸'];
+        applyFaceDetectInfo(lines, data.face_detect);
+        cards.push(resultCard('检索完成', '', lines));
+      } else {
+        for (const item of data.results) {
+          const lines = [
+            `姓名: ${item.person_name || '-'}`,
+            `相似度: ${formatNum(item.similarity)}`,
+            `人脸ID: ${item.face_id || '-'}`,
+          ];
+          applyFaceDetectInfo(lines, data.face_detect);
+          cards.push(resultCard('检索候选', item.image_url, lines));
+        }
+      }
+
+      renderResults(cards);
+      showJson(data);
+      setStatus('检索已完成。', data.face_detect?.multiple_faces ? 'warn' : 'ok');
+    }
+
+    async function handleSuggestGeofence() {
+      const query = new URLSearchParams();
+      const person = el.geofencePerson.value.trim();
+      if (person) query.set('person_name', person);
+      query.set('min_samples', '3');
+      query.set('max_points', '500');
+      query.set('cluster_distance_m', '120');
+
+      const data = await fetchJson(`/checkins/geofence/suggest?${query.toString()}`);
+      if (!data.ok) {
+        throw new Error(data.reason || '无法生成围栏推荐');
+      }
+
+      el.centerLat.value = Number(data.center_lat).toFixed(6);
+      el.centerLng.value = Number(data.center_lng).toFixed(6);
+      el.radiusM.value = String(Math.round(Number(data.radius_m)));
+
+      showJson(data);
+      setStatus(`已应用围栏推荐（簇样本 ${data.cluster_size} 条）`, 'ok');
+    }
+
+    async function handleLocate() {
+      const coords = await getBrowserLocation();
+      el.lat.value = Number(coords.latitude).toFixed(6);
+      el.lng.value = Number(coords.longitude).toFixed(6);
+      setStatus('已获取当前位置。', 'ok');
+    }
+
+    function renderCheckinFailure(reason, details = []) {
+      const lines = [
+        '状态: precheck_failed',
+        `原因: ${reason}`,
+        ...details,
+      ];
+      const preview = capturedObjectUrl || '';
+      renderResults([resultCard('签到不成功', preview, lines)]);
+      showJson({
+        ok: false,
+        status: 'precheck_failed',
+        reason,
+        details,
+      });
+      setStatus(`签到不成功：${reason}`, 'warn');
+    }
+
+    async function handleCheckin() {
+      const livenessExpired = liveness.passed && (Date.now() - liveness.passedAt > LIVE_EXPIRE_MS);
+      if (!liveness.passed || livenessExpired) {
+        liveness.passed = false;
+        refreshLivenessUi();
+        renderCheckinFailure('未完成活体检测（随机动作挑战）', [
+          '请点击“打开摄像头”，并按页面提示依次完成全部随机动作。',
+        ]);
+        return;
+      }
+      if (
+        LIVE_MODE === 'strict'
+        && (!liveness.proof || !liveness.proof.challenge_id || !liveness.proof.nonce)
+      ) {
+        renderCheckinFailure('严格活体证明缺失，请重新检测', [
+          '请先完成随机动作挑战，再执行严格证据复核后签到。',
+        ]);
+        return;
+      }
+
+      let imagePayload;
+      try {
+        imagePayload = resolveCheckinImage();
+      } catch (error) {
+        renderCheckinFailure('未拍摄签到照片', [
+          error?.message || '请先点击“拍照并用于签到”。',
+        ]);
+        return;
+      }
+
+      let strictTicket = '';
+      if (LIVE_MODE === 'strict') {
+        try {
+          setStatus('严格版：正在上传短证据片段并执行后端 anti-spoof 复核...', 'info');
+          strictTicket = await ensureStrictLivenessTicket(imagePayload);
+        } catch (error) {
+          renderCheckinFailure('严格活体复核失败', [
+            error?.message || '请重新进行活体检测后再签到。',
+          ]);
+          return;
+        }
+      }
+
+      if (!el.lat.value || !el.lng.value) {
+        setStatus('正在获取定位权限与当前位置...', 'info');
+        try {
+          const coords = await getBrowserLocation();
+          el.lat.value = Number(coords.latitude).toFixed(6);
+          el.lng.value = Number(coords.longitude).toFixed(6);
+        } catch (error) {
+          renderCheckinFailure('定位失败，无法完成签到', [
+            error?.message || '请先打开定位权限或手动填写经纬度。',
+          ]);
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('file', imagePayload.data, imagePayload.name);
+      formData.append('lat', String(el.lat.value));
+      formData.append('lng', String(el.lng.value));
+      formData.append('threshold', String(Number(el.threshold.value) || 0.6));
+      formData.append('top_k', String(Number(el.topK.value) || 1));
+      formData.append('auto_geofence', String(Boolean(el.autoGeofence.checked)));
+      if (liveness.proof) {
+        formData.append('liveness_proof', JSON.stringify(liveness.proof));
+      }
+      if (strictTicket) {
+        formData.append('liveness_ticket', strictTicket);
+      }
+
+      const person = el.geofencePerson.value.trim();
+      if (person) formData.append('geofence_person_name', person);
+
+      if (el.centerLat.value && el.centerLng.value) {
+        formData.append('center_lat', String(el.centerLat.value));
+        formData.append('center_lng', String(el.centerLng.value));
+      }
+      if (el.radiusM.value) {
+        formData.append('radius_m', String(el.radiusM.value));
+      }
+
+      const data = await fetchJson('/checkin', { method: 'POST', body: formData });
+
+      const lines = [
+        `状态: ${data.status || '-'}`,
+        `姓名: ${data.person_name || '-'}`,
+        `相似度: ${formatNum(data.similarity)}`,
+        `距离: ${data.distance_m == null ? '-' : `${Math.round(Number(data.distance_m))} m`}`,
+        `原因: ${data.reason || '签到成功'}`,
+      ];
+      const antiSpoofScore = Number(data?.liveness?.anti_spoof_score ?? NaN);
+      if (Number.isFinite(antiSpoofScore)) {
+        lines.push(`LiveScore: ${antiSpoofScore.toFixed(3)}`);
+      }
+      applyFaceDetectInfo(lines, data.face_detect);
+
+      const cards = [
+        resultCard(data.ok ? '签到成功' : '签到未通过', data.capture_image_url, lines),
+      ];
+      if (data.matched_image_url) {
+        cards.push(
+          resultCard('匹配到的注册照片', data.matched_image_url, [
+            `姓名: ${data.person_name || '-'}`,
+            `匹配人脸ID: ${data.matched_face_id || '-'}`,
+          ])
+        );
+      }
+
+      renderResults(cards);
+      showJson(data);
+
+      if (data.ok) {
+        setStatus('签到成功。', data.face_detect?.multiple_faces ? 'warn' : 'ok');
+      } else {
+        setStatus(`签到失败：${data.reason || data.status || '未知原因'}`, 'warn');
+      }
+
+      // 每次签到后都要求重新做人脸活体动作，避免复用上一次结果。
+      resetLivenessProgress();
+
+      await refreshDashboard();
+    }
+
+    async function runAction(action, loadingText) {
+      setStatus(loadingText, 'info');
+      try {
+        await action();
+      } catch (error) {
+        setStatus(error.message || String(error), 'err');
+      }
+    }
+
+    el.btnRefresh.addEventListener('click', () => runAction(refreshDashboard, '正在刷新看板...'));
+    el.btnLocate.addEventListener('click', () => runAction(handleLocate, '正在获取定位...'));
+    el.btnSuggest.addEventListener('click', () => runAction(handleSuggestGeofence, '正在根据历史推荐围栏...'));
+    el.btnCameraStart.addEventListener('click', () => runAction(startLivenessCheck, '正在打开摄像头并启动活体检测...'));
+    el.btnCameraShot.addEventListener('click', () => runAction(captureFromCamera, '正在拍照...'));
+    el.btnCameraStop.addEventListener('click', () => {
+      stopCameraStream();
+      setStatus('摄像头已关闭。', 'info');
+    });
+    el.btnSaveApiBase?.addEventListener('click', () => {
+      const value = normalizeApiBase(el.apiBaseInput.value || '');
+      if (!value) {
+        setStatus('API 地址不能为空。', 'err');
+        return;
+      }
+      if (!/^https?:[/][/]/i.test(value)) {
+        setStatus('API 地址需以 http:// 或 https:// 开头。', 'err');
+        return;
+      }
+      localStorage.setItem('face_api_base', value);
+      apiBase = value;
+      el.apiBaseInput.value = value;
+      setStatus(`API 地址已保存：${value}`, 'ok');
+      refreshDashboard().catch((err) => setStatus(err.message || String(err), 'err'));
+    });
+    el.apiBaseInput?.addEventListener('change', () => {
+      const value = normalizeApiBase(el.apiBaseInput.value || '');
+      if (/^https?:[/][/]/i.test(value)) {
+        apiBase = value;
+        el.apiBaseInput.value = value;
+      }
+    });
+    el.btnRegister.addEventListener('click', () => runAction(handleRegister, '正在注册人脸...'));
+    el.btnSearch.addEventListener('click', () => runAction(handleSearch, '正在执行检索...'));
+    el.btnCheckin.addEventListener('click', () => runAction(handleCheckin, '正在执行签到校验...'));
+    window.addEventListener('beforeunload', () => {
+      stopCameraStream();
+      if (capturedObjectUrl) {
+        URL.revokeObjectURL(capturedObjectUrl);
+        capturedObjectUrl = null;
+      }
+    });
+
+    initStandaloneMode();
+    refreshLivenessUi();
+    refreshDashboard().catch((err) => setStatus(err.message || String(err), 'err'));
+  </script>
+</body>
+</html>

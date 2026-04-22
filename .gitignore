@@ -1,0 +1,92 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+
+# Virtual environments
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+
+# IDE and editor files
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+.tmp_tests/
+.run/
+dist/
+*.tmp
+*.log
+.tmp_face_mesh.js
+.git_test_write_probe
+
+# Runtime/database artifacts
+*.db
+*.db-journal
+
+# Project-generated data and media
+data/media/
+data/tmp_tests_run/
+data/reports/
+images/
+models/
+
+# Large document/media formats (non-code)
+*.pptx
+*.docx
+*.onnx
+*.zip
+
+# Frontend binary assets (non-code)
+app/static/mediapipe/face_mesh/*.wasm
+app/static/mediapipe/face_mesh/*.data
+app/static/mediapipe/face_mesh/*.binarypb
+
+# Environment variables
+.env
+.env.*
+
+# Sensitive/runtime artifacts
+*.db
+*.db-journal
+*.onnx
+*.zip
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.webp
+
+# Runtime outputs
+data/
+images/
+models/
+
+# Personal sample attendance data
+checkinexcel/course*旧版签到数据.txt
+
+# Java submodule metadata/build cache
+checkinexcel/.git/
+checkinexcel/.idea/
+checkinexcel/target/
+
+# Python caches
+**/__pycache__/
+*.py[cod]
+checkinexcel/course*.txt
