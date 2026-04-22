@@ -1,0 +1,9 @@
+这个用法是给小组内成员看的，最后提供给用户就是一个按钮，按下按钮自动生成excel文件给用户下载查看
+
+首先启动文件src/main/java/com/example/checkinexcel/CheckinexcelApplication.java
+然后可以打开test.html
+拖入签到数据（.txt文件）
+点击下载就行了
+
+自动总结签到人数，签到次数并绘制柱状图
+柱状图大小经过调整了，看的很清楚

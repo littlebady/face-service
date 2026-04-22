@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>签到Excel生成测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 15px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .upload-text {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .file-name {
+            background: #f0f3ff;
+            padding: 12px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .file-name.show {
+            display: flex;
+        }
+        
+        .file-name span {
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .file-name .clear-btn {
+            background: none;
+            border: none;
+            color: #e74c3c;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0 5px;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #666;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .status.show {
+            display: block;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #856404;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .server-config {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .server-config label {
+            display: block;
+            margin-bottom: 8px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .server-config input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .server-config input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 签到Excel生成测试</h1>
+        
+        <!-- 服务器地址配置 -->
+        <div class="server-config">
+            <label>服务器地址：</label>
+            <input type="text" id="serverUrl" value="http://localhost:8080/api/excel/generate">
+        </div>
+        
+        <!-- 上传区域 -->
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">
+                点击选择文件或拖拽文件到此处<br>
+                <small>支持 .txt 文件</small>
+            </div>
+        </div>
+        <input type="file" id="fileInput" accept=".txt">
+        
+        <!-- 已选文件显示 -->
+        <div class="file-name" id="fileName">
+            <span id="fileNameText"></span>
+            <button class="clear-btn" onclick="clearFile()">✕</button>
+        </div>
+        
+        <!-- 按钮 -->
+        <button class="btn btn-primary" id="uploadBtn" onclick="uploadFile()" disabled>
+            ⬆️ 上传并生成Excel
+        </button>
+        
+        <button class="btn btn-secondary" onclick="createTestFile()">
+            📄 生成测试txt文件
+        </button>
+        
+        <!-- 状态显示 -->
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const fileNameText = document.getElementById('fileNameText');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const statusDiv = document.getElementById('status');
+        const serverUrlInput = document.getElementById('serverUrl');
+
+        let selectedFile = null;
+
+        // 点击上传区域
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // 文件选择变化
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        // 拖拽事件
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.txt')) {
+                handleFile(file);
+            } else {
+                showStatus('error', '请选择 .txt 文件！');
+            }
+        });
+
+        // 处理文件
+        function handleFile(file) {
+            if (!file) return;
+            
+            selectedFile = file;
+            fileNameText.textContent = '📄 ' + file.name;
+            fileName.classList.add('show');
+            uploadBtn.disabled = false;
+            showStatus('', '');
+        }
+
+        // 清除文件
+        function clearFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            fileName.classList.remove('show');
+            uploadBtn.disabled = true;
+            showStatus('', '');
+        }
+
+        // 显示状态
+        function showStatus(type, message) {
+            statusDiv.className = 'status show ' + type;
+            if (type === 'loading') {
+                statusDiv.innerHTML = '<span class="loading-spinner"></span>' + message;
+            } else {
+                statusDiv.textContent = message;
+            }
+        }
+
+        // 上传文件
+        async function uploadFile() {
+            if (!selectedFile) {
+                showStatus('error', '请先选择文件！');
+                return;
+            }
+
+            const serverUrl = serverUrlInput.value.trim();
+            if (!serverUrl) {
+                showStatus('error', '请填写服务器地址！');
+                return;
+            }
+
+            showStatus('loading', '正在上传并生成Excel...');
+            uploadBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch(serverUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`服务器错误: ${response.status}`);
+                }
+
+                // 获取文件名
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let downloadName = 'output.xlsx';
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename="?(.+?)"?$/);
+                    if (match) {
+                        downloadName = match[1];
+                    }
+                }
+
+                // 下载文件
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = downloadName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                showStatus('success', '✅ Excel生成成功，已自动下载！文件名: ' + downloadName);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('error', '❌ 请求失败: ' + error.message + 
+                    '\n\n请确认：\n1. 后端服务已启动\n2. 服务器地址正确\n3. 端口号正确');
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        }
+
+        // 生成测试文件
+        function createTestFile() {
+            const testContent = 
+`标题行\t\t学号\t\t姓名\t\t第1次\t\t第2次\t\t第3次\t\t第4次\t\t第5次\t\t总计
+数据行\t\t2024001\t\t张三\t\t1\t\t1\t\t0\t\t1\t\t1\t\t4
+数据行\t\t2024002\t\t李四\t\t0\t\t1\t\t1\t\t0\t\t1\t\t3
+数据行\t\t2024003\t\t王五\t\t1\t\t0\t\t0\t\t1\t\t0\t\t2
+数据行\t\t2024004\t\t赵六\t\t1\t\t1\t\t1\t\t1\t\t1\t\t5
+数据行\t\t2024005\t\t孙七\t\t0\t\t0\t\t0\t\t0\t\t0\t\t0
+数据行\t\t2024006\t\t周八\t\t1\t\t1\t\t1\t\t0\t\t1\t\t4
+数据行\t\t2024007\t\t吴九\t\t0\t\t1\t\t0\t\t1\t\t1\t\t3`;
+
+            const blob = new Blob([testContent], { type: 'text/plain;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'course2024.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showStatus('success', '✅ 测试文件已生成：course2024.txt');
+        }
+    </script>
+</body>
+</html>

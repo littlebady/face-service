@@ -1,0 +1,1355 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>鏅鸿兘璇剧▼鑱氱被绯荤粺 - KMeans绠楁硶</title>
+  <style>
+    table.lamp {
+      width: 100%;
+      border: 1px solid #d4d4d4;
+      font-size: 20px;
+    }
+    
+    table.tftable, table.tftable :is(th, tr, td) {
+      font-size: 12px;
+      border: 1px solid #729ea5;
+    }
+    table.tftable {
+      color: #333333;
+      width: 95%;
+      border-collapse: collapse;
+    }
+    table.tftable th {
+      background-color: #acc8cc;
+      padding: 8px;
+      text-align: left;
+    }
+    table.tftable tr {
+      background-color: #d4e3e5;
+    }
+    table.tftable td {
+      padding: 8px;
+    }
+
+    .type1 { color: red; }
+    .type2 { color: blue; }
+    .type3 { color: green; }
+    .modified { 
+      color: red; 
+      background-color: #fff0f0;
+      border: 1px solid red;
+    }
+    
+    .clustering-controls {
+      background-color: #f0f8ff;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+    
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    .threshold-value {
+      font-weight: bold;
+      min-width: 40px;
+      color: #2c5aa0;
+    }
+    
+    .stats-container {
+      display: flex;
+      gap: 15px;
+      margin: 15px 0;
+      flex-wrap: wrap;
+    }
+    
+    .stat-card {
+      background: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+      min-width: 100px;
+    }
+    
+    .stat-value {
+      font-size: 1.3rem;
+      font-weight: bold;
+      color: #2c5aa0;
+    }
+    
+    .stat-label {
+      font-size: 0.8rem;
+      color: #666;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin: 15px 0;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      padding: 8px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background-color: #2c5aa0;
+      color: white;
+    }
+    
+    .btn-secondary {
+      background-color: #6c757d;
+      color: white;
+    }
+    
+    .btn-success {
+      background-color: #28a745;
+      color: white;
+    }
+    
+    .btn-warning {
+      background-color: #ffc107;
+      color: #333;
+    }
+    
+    .btn-info {
+      background-color: #17a2b8;
+      color: white;
+    }
+    
+    .btn-danger {
+      background-color: #dc3545;
+      color: white;
+    }
+    
+    .btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    
+    .test-badge {
+      background-color: #ff6b6b;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      margin-left: 10px;
+    }
+    
+    .distance-indicator {
+      display: inline-block;
+      width: 60px;
+      height: 8px;
+      background: #ddd;
+      border-radius: 4px;
+      margin-right: 5px;
+      overflow: hidden;
+    }
+    
+    .distance-fill {
+      height: 100%;
+      background: #2c5aa0;
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    
+    .cluster-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+    
+    .cluster-0 { background-color: #ffcdd2; color: #c62828; }
+    .cluster-1 { background-color: #c8e6f5; color: #0277bd; }
+    .cluster-2 { background-color: #c8e6c9; color: #2e7d32; }
+    .cluster-3 { background-color: #fff9c4; color: #f57f17; }
+    .cluster-4 { background-color: #e1bee7; color: #7b1fa2; }
+    
+    .feature-input {
+      width: 80px;
+      padding: 4px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    
+    .cluster-info {
+      background: #e3f2fd;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 10px;
+    }
+    
+    .data-source-selector {
+      margin: 10px 0;
+      padding: 10px;
+      background: #fff3cd;
+      border-radius: 5px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    .example-btn {
+      background-color: #6c757d;
+      color: white;
+      padding: 5px 12px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .example-btn:hover {
+      background-color: #5a6268;
+    }
+    
+    .share-input {
+      width: 100px;
+      padding: 4px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    
+    .share-btn {
+      background-color: #17a2b8;
+      color: white;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+      margin-left: 5px;
+    }
+    
+    .download-btn {
+      background-color: #28a745;
+      color: white;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    
+    .center-badge {
+      display: inline-block;
+      background-color: #ff9800;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      margin-left: 5px;
+    }
+    
+    .gps-input {
+      width: 100px;
+      padding: 4px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    
+    .unspecified {
+      color: #999;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <table class="lamp" bgcolor="#10ff10">
+      <tr>
+      <th><a href="log.php">鍐峰嚡鍗氱┖闂?/a></th>
+      <th></th>
+      <th><a href="index.php">绛惧埌</a></th>
+      <th><a href="index.php?pic=photo">鎷嶇収绛惧埌</a></th>
+      <th><a href="liveIndex.php">閫夋嫨棰?/a></th>
+      <th><a href="msgIndex.php">绠€绛旈</a></th>
+      <th><a href="SigByTeacher.php">鐗规畩绛惧埌</a></th>
+      <th><a href="?logout=">閫€鍑?/a></th>
+      <th></th>
+      <th style="width: 9em;"><font color="red">涓汉绌洪棿锛屽巻鍙叉暟鎹?/font></th>
+      </tr>
+    </table>
+
+  <p>褰撳墠鐧诲綍鐢ㄦ埛锛?b>demo_user_001</b> <span class="test-badge">KMeans鑱氱被妯″紡</span></p>
+  
+  <!-- 鏁版嵁婧愰€夋嫨鍣?-->
+  <div class="data-source-selector">
+    <strong>馃搳 绛惧埌鏁版嵁妯℃嫙锛?/strong>
+    <button class="example-btn" onclick="generateBatchSignins()">鐢熸垚鎵归噺绛惧埌鏁版嵁(30鏉?</button>
+    <button class="example-btn" onclick="addSingleSignin()">娣诲姞鍗曟潯绛惧埌</button>
+    <button class="example-btn" onclick="loadInitialData()">鍔犺浇鍒濆鏍囨敞鏁版嵁</button>
+    <span style="margin-left: auto; font-size: 12px; color: #666;">馃挕 鍩轰簬鏃堕棿(鏄熸湡/鏃舵)+GPS缁忕含搴?浜烘暟杩涜KMeans鑱氱被</span>
+  </div>
+  
+  <p>鐩墠鏌ュ埌鎮ㄧ殑璇惧爞绛惧埌璁板綍濡備笅锛?/p>
+
+  <!-- 鑱氱被鎺у埗闈㈡澘 -->
+  <div class="clustering-controls">
+    <h3>鏅鸿兘璇剧▼鑱氱被绯荤粺 - KMeans绠楁硶 <span class="test-badge">鍩轰簬绛惧埌鐗瑰緛</span></h3>
+    
+    <div class="control-group">
+      <span><strong>鑱氱被鍙傛暟锛?/strong></span>
+      <div class="slider-container">
+        <span>鑱氱被鏁伴噺(K鍊?:</span>
+        <input type="range" id="k-value" min="2" max="8" step="1" value="6">
+        <span class="threshold-value" id="k-display">6</span>
+      </div>
+      <button class="btn btn-primary" id="run-kmeans">鈻?杩愯KMeans鑱氱被</button>
+      <button class="btn btn-success" id="apply-clustering">鉁?搴旂敤鑱氱被缁撴灉</button>
+      <button class="btn btn-info" id="init-centers">馃搶 灏嗗綋鍓嶆墜鍔ㄥ綊绫昏涓哄浐瀹氳仛绫讳腑蹇?/button>
+      <button class="btn btn-warning" id="clear-centers">馃棏锔?娓呴櫎鍥哄畾鑱氱被涓績</button>
+    </div>
+    
+    <div class="stats-container">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">鎬荤鍒版暟</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-clustered">0</div>
+        <div class="stat-label">宸茶仛绫?/div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-inertia">0</div>
+        <div class="stat-label">鑱氱被鎯€?/div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-accuracy">0%</div>
+        <div class="stat-label">鑱氱被璐ㄩ噺</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-centers">0</div>
+        <div class="stat-label">鍥哄畾涓績鏁?/div>
+      </div>
+    </div>
+    
+    <div class="button-group">
+      <button class="btn btn-secondary" id="reset-btn">馃攧 閲嶇疆鎵€鏈夋暟鎹?/button>
+      <button class="btn btn-warning" id="show-features">馃搱 鏄剧ず鐗瑰緛淇℃伅</button>
+    </div>
+    
+    <div id="cluster-info" class="cluster-info">
+      <span id="cluster-status">馃挕 鎻愮ず锛氶鍏堢敓鎴愮鍒版暟鎹紝鐒跺悗鎵嬪姩鍦?褰掑埌璇剧▼"鍒楁爣娉ㄩ儴鍒嗘暟鎹紙鑷冲皯2闂ㄤ笉鍚岃绋嬶級锛岀偣鍑?灏嗗綋鍓嶆墜鍔ㄥ綊绫昏涓哄浐瀹氳仛绫讳腑蹇?寤虹珛妯″瀷锛屾渶鍚庤繍琛孠Means鑱氱被鑷姩褰掔被鍏朵綑鏁版嵁锛?/span>
+    </div>
+  </div>
+
+  <!-- 绛惧埌鏁版嵁琛?-->
+  <table id="tfhover" class="tftable" border="1">
+    <thead>
+      <tr>
+        <th>鏃堕棿</th>
+        <th>璇惧爞ID</th>
+        <th>绫诲瀷</th>
+        <th>鏁伴噺(绛惧埌浜烘暟)</th>
+        <th>鏄熸湡<br><small>(鐗瑰緛1)</small></th>
+        <th>鏃舵<br><small>(鐗瑰緛2)</small></th>
+        <th>GPS缁忓害<br><small>(鐗瑰緛3)</small></th>
+        <th>GPS绾害<br><small>(鐗瑰緛4)</small></th>
+        <th>褰掑埌璇剧▼</th>
+        <th>璺濈/绨?/th>
+        <th>涓嬭浇鏁版嵁</th>
+        <th>鍒嗕韩缁欎粬浜?/th>
+      </tr>
+    </thead>
+    <tbody id="signin-tbody">
+    </tbody>
+  </table>
+
+  <script>
+    'use strict';
+    
+    // 璇剧▼搴撳畾涔夛紙鍖呭惈鍏稿瀷鏁欏鐨勭粡绾害锛?
+    const COURSE_LIB = {
+      0: { name: "鏈€夋嫨", baseWeekday: 0, baseTimeSlot: 0, lng: 0, lat: 0, baseSize: 0 },
+      1: { name: "楂樼瓑鏁板", baseWeekday: 1, baseTimeSlot: 1, lng: 116.3532, lat: 40.0044, baseSize: 45 },
+      2: { name: "澶у鐗╃悊", baseWeekday: 1, baseTimeSlot: 2, lng: 116.3550, lat: 40.0055, baseSize: 40 },
+      3: { name: "绋嬪簭璁捐", baseWeekday: 2, baseTimeSlot: 1, lng: 116.3575, lat: 40.0068, baseSize: 50 },
+      4: { name: "鑻辫鍚姏", baseWeekday: 3, baseTimeSlot: 3, lng: 116.3510, lat: 40.0032, baseSize: 35 },
+      5: { name: "鏁版嵁缁撴瀯", baseWeekday: 4, baseTimeSlot: 1, lng: 116.3590, lat: 40.0080, baseSize: 48 },
+      6: { name: "绾挎€т唬鏁?, baseWeekday: 5, baseTimeSlot: 2, lng: 116.3545, lat: 40.0060, baseSize: 42 }
+    };
+    
+    // 鏄熸湡鏃舵妯℃澘锛堢敤浜庣敓鎴愭暟鎹級
+    const TEMPLATE_SCHEDULES = [
+      { weekday: 1, timeSlot: 1, defaultCourseId: 1, name: "楂樼瓑鏁板" },
+      { weekday: 1, timeSlot: 2, defaultCourseId: 2, name: "澶у鐗╃悊" },
+      { weekday: 2, timeSlot: 1, defaultCourseId: 3, name: "绋嬪簭璁捐" },
+      { weekday: 3, timeSlot: 3, defaultCourseId: 4, name: "鑻辫鍚姏" },
+      { weekday: 4, timeSlot: 1, defaultCourseId: 5, name: "鏁版嵁缁撴瀯" },
+      { weekday: 5, timeSlot: 2, defaultCourseId: 6, name: "绾挎€т唬鏁? }
+    ];
+    
+    // 绛惧埌鏁版嵁瀛樺偍
+    let signRecords = [];
+    let nextId = 0;
+    let fixedCentroids = null;
+    let fixedCentroidMapping = null;
+    
+    // 鍙傝€冪粡绾害涓績鐐?
+    const CENTER_LNG = 116.353165;
+    const CENTER_LAT = 40.004379;
+    
+    // ========== 杈呭姪鍑芥暟 ==========
+    function getWeekdayFromDate(dateStr) {
+      let d = new Date(dateStr.replace(/-/g, '/'));
+      if (isNaN(d.getTime())) d = new Date();
+      let w = d.getDay();
+      return w === 0 ? 7 : w;
+    }
+    
+    function getTimeSlotFromHourMin(hour, minute) {
+      const totalMin = hour * 60 + minute;
+      if (totalMin >= 480 && totalMin < 570) return 1;
+      if (totalMin >= 590 && totalMin < 685) return 2;
+      if (totalMin >= 810 && totalMin < 905) return 3;
+      if (totalMin >= 920 && totalMin < 1015) return 4;
+      if (totalMin >= 1110 && totalMin < 1200) return 5;
+      if (totalMin >= 1230 && totalMin < 1320) return 6;
+      if (totalMin >= 1330 && totalMin < 1420) return 7;
+      return 8;
+    }
+    
+    // 鏍规嵁鏄熸湡鍜屾椂娈电敓鎴愪笉鍚屾棩鏈熺殑鏃堕棿瀛楃涓诧紙鍚戝悗寤剁画锛?
+    function generateTimeString(weekday, timeSlot, weekOffset) {
+      // 鍩虹鏃ユ湡锛?026骞?鏈?0鏃ワ紙鍛ㄤ竴锛?
+      const baseDate = new Date(2026, 2, 30); // 2026骞?鏈?0鏃?
+      // 鍚戝悗寤剁画 weekOffset 鍛紙1-8鍛級
+      const targetDate = new Date(baseDate);
+      targetDate.setDate(baseDate.getDate() + (weekOffset * 7));
+      
+      const targetWeekday = weekday === 7 ? 0 : weekday;
+      
+      let daysToAdd = targetWeekday - targetDate.getDay();
+      if (daysToAdd < 0) daysToAdd += 7;
+      
+      targetDate.setDate(targetDate.getDate() + daysToAdd);
+      
+      // 鏍规嵁鏃舵璁剧疆鍏蜂綋鏃堕棿
+      let hour, minute;
+      switch(timeSlot) {
+        case 1: hour = 8; minute = 10; break;
+        case 2: hour = 10; minute = 5; break;
+        case 3: hour = 13; minute = 40; break;
+        case 4: hour = 15; minute = 20; break;
+        case 5: hour = 18; minute = 30; break;
+        case 6: hour = 19; minute = 0; break;
+        case 7: hour = 20; minute = 0; break;
+        default: hour = 8; minute = 0;
+      }
+      
+      // 娣诲姞闅忔満鍒嗛挓鍋忕Щ锛?-15鍒嗛挓锛?
+      const minuteOffset = Math.floor(Math.random() * 16);
+      minute += minuteOffset;
+      if (minute >= 60) {
+        minute -= 60;
+        hour += 1;
+      }
+      
+      const year = targetDate.getFullYear();
+      const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const day = String(targetDate.getDate()).padStart(2, '0');
+      const hourStr = String(hour).padStart(2, '0');
+      const minuteStr = String(minute).padStart(2, '0');
+      
+      return `${year}-${month}-${day} ${hourStr}:${minuteStr}:00`;
+    }
+    
+    // 鐢熸垚鍚堢悊鐨勯殢鏈篏PS锛堝湪鍙傝€冪偣闄勮繎锛?
+    function randomGPS() {
+      const lng = CENTER_LNG + (Math.random() - 0.5) * 0.02;
+      const lat = CENTER_LAT + (Math.random() - 0.5) * 0.015;
+      return { lng: parseFloat(lng.toFixed(6)), lat: parseFloat(lat.toFixed(6)) };
+    }
+    
+    // 鎻愬彇鐗瑰緛鍚戦噺
+    function extractFeatures(record) {
+      return {
+        weekday: record.weekday,
+        timeSlot: record.timeSlot,
+        lng: record.lng,
+        lat: record.lat,
+        attendCount: record.attendCount,
+        id: record.id
+      };
+    }
+    
+    // 璁＄畻涓ょ偣闂碐PS璺濈
+    function gpsDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+    
+    // 鍔犳潈娆ф皬璺濈
+    function distance(p1, p2) {
+      const w = [0.40, 0.40, 0.15, 0.05];
+      let sum = 0;
+      
+      const normWeek = (p1.weekday - 1) / 6;
+      const normWeek2 = (p2.weekday - 1) / 6;
+      sum += w[0] * Math.pow(normWeek - normWeek2, 2);
+      
+      const normSlot = (p1.timeSlot - 1) / 7;
+      const normSlot2 = (p2.timeSlot - 1) / 7;
+      sum += w[1] * Math.pow(normSlot - normSlot2, 2);
+      
+      const gpsDist = gpsDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+      const normGps = Math.min(1, gpsDist / 2.0);
+      sum += w[2] * Math.pow(normGps, 2);
+      
+      const normCnt = (p1.attendCount - 15) / 55;
+      const normCnt2 = (p2.attendCount - 15) / 55;
+      sum += w[3] * Math.pow(Math.max(0, Math.min(1, normCnt)) - Math.max(0, Math.min(1, normCnt2)), 2);
+      
+      return Math.sqrt(sum);
+    }
+    
+    // 浠庢墜鍔ㄦ爣娉ㄧ殑璇剧▼鎻愬彇涓績锛堟帓闄ゆ湭閫夋嫨锛?
+    function buildCentroidsFromManual() {
+      const groups = new Map();
+      for (let rec of signRecords) {
+        if (rec.courseId && rec.courseId > 0) {
+          if (!groups.has(rec.courseId)) groups.set(rec.courseId, []);
+          groups.get(rec.courseId).push(rec);
+        }
+      }
+      
+      if (groups.size < 2) {
+        alert('鑷冲皯闇€瑕佹爣娉?涓笉鍚岀殑璇剧▼绫诲埆锛堜笉鑳芥槸"鏈€夋嫨"锛夋墠鑳藉缓绔嬭仛绫讳腑蹇冿紒');
+        return null;
+      }
+      
+      const centroids = [];
+      const mapping = {};
+      let idx = 0;
+      for (let [courseId, recs] of groups.entries()) {
+        const avgWeek = recs.reduce((s, r) => s + r.weekday, 0) / recs.length;
+        const avgSlot = recs.reduce((s, r) => s + r.timeSlot, 0) / recs.length;
+        const avgLng = recs.reduce((s, r) => s + r.lng, 0) / recs.length;
+        const avgLat = recs.reduce((s, r) => s + r.lat, 0) / recs.length;
+        const avgCnt = recs.reduce((s, r) => s + r.attendCount, 0) / recs.length;
+        centroids.push({ 
+          weekday: avgWeek, 
+          timeSlot: avgSlot, 
+          lng: avgLng, 
+          lat: avgLat,
+          attendCount: avgCnt, 
+          courseId: parseInt(courseId),
+          isFixed: true
+        });
+        mapping[idx] = parseInt(courseId);
+        idx++;
+      }
+      
+      return { centroids, mapping };
+    }
+    
+    // 浣跨敤鍥哄畾涓績杩涜鑱氱被鍒嗛厤
+    function assignUsingFixedCentroids() {
+      if (!fixedCentroids || fixedCentroids.length === 0) {
+        return false;
+      }
+      
+      const features = signRecords.map(extractFeatures);
+      let totalDistance = 0;
+      
+      for (let i = 0; i < features.length; i++) {
+        let minDist = Infinity;
+        let bestIdx = 0;
+        for (let c = 0; c < fixedCentroids.length; c++) {
+          const d = distance(features[i], fixedCentroids[c]);
+          if (d < minDist) {
+            minDist = d;
+            bestIdx = c;
+          }
+        }
+        signRecords[i].cluster = bestIdx;
+        signRecords[i].distanceToCenter = minDist;
+        totalDistance += minDist * minDist;
+        if (fixedCentroidMapping && fixedCentroidMapping[bestIdx]) {
+          signRecords[i].recommendedCourse = fixedCentroidMapping[bestIdx];
+        }
+      }
+      
+      let quality = calculateQualityFromAssignments();
+      document.getElementById('stat-inertia').textContent = totalDistance.toFixed(4);
+      document.getElementById('stat-accuracy').textContent = Math.round(quality) + '%';
+      document.getElementById('stat-centers').textContent = fixedCentroids.length;
+      
+      return true;
+    }
+    
+    // 璁＄畻鑱氱被璐ㄩ噺
+    function calculateQualityFromAssignments() {
+      if (signRecords.length < 2) return 100;
+      
+      let silTotal = 0;
+      let validCount = 0;
+      for (let i = 0; i < signRecords.length; i++) {
+        const clusterId = signRecords[i].cluster;
+        if (clusterId === undefined || clusterId < 0) continue;
+        
+        let intraSum = 0, intraCnt = 0;
+        for (let j = 0; j < signRecords.length; j++) {
+          if (i !== j && signRecords[j].cluster === clusterId) {
+            intraSum += distance(extractFeatures(signRecords[i]), extractFeatures(signRecords[j]));
+            intraCnt++;
+          }
+        }
+        const a = intraCnt > 0 ? intraSum / intraCnt : 0;
+        
+        let minInterDist = Infinity;
+        const uniqueClusters = [...new Set(signRecords.map(r => r.cluster).filter(c => c !== undefined && c >= 0))];
+        for (let otherCluster of uniqueClusters) {
+          if (otherCluster === clusterId) continue;
+          let interSum = 0, interCnt = 0;
+          for (let j = 0; j < signRecords.length; j++) {
+            if (signRecords[j].cluster === otherCluster) {
+              interSum += distance(extractFeatures(signRecords[i]), extractFeatures(signRecords[j]));
+              interCnt++;
+            }
+          }
+          const b = interCnt > 0 ? interSum / interCnt : Infinity;
+          if (b < minInterDist) minInterDist = b;
+        }
+        
+        if (minInterDist !== Infinity && a + minInterDist > 0) {
+          const s = (minInterDist - a) / Math.max(a, minInterDist);
+          silTotal += s;
+          validCount++;
+        }
+      }
+      
+      const avgSil = validCount > 0 ? silTotal / validCount : 0;
+      return Math.max(0, Math.min(100, (avgSil + 1) * 50));
+    }
+    
+    // 浼犵粺KMeans绠楁硶
+    function kMeansClustering(features, k, maxIter = 100) {
+      if (features.length === 0) return { clusters: [], centroids: [], inertia: 0 };
+      if (k > features.length) k = features.length;
+      
+      let centroids = [];
+      let shuffled = [...features];
+      for (let i = 0; i < k && shuffled.length; i++) {
+        let rand = Math.floor(Math.random() * shuffled.length);
+        centroids.push({ ...shuffled[rand] });
+      }
+      
+      let assignments = new Array(features.length).fill(0);
+      let oldAssign = new Array(features.length).fill(-1);
+      let iter = 0;
+      
+      while (iter < maxIter) {
+        for (let i = 0; i < features.length; i++) {
+          let minDist = Infinity, best = 0;
+          for (let c = 0; c < centroids.length; c++) {
+            let d = distance(features[i], centroids[c]);
+            if (d < minDist) { minDist = d; best = c; }
+          }
+          assignments[i] = best;
+        }
+        
+        let changed = false;
+        for (let i = 0; i < features.length; i++) {
+          if (assignments[i] !== oldAssign[i]) { changed = true; break; }
+        }
+        if (!changed) break;
+        oldAssign = [...assignments];
+        
+        const newCentroids = [];
+        for (let c = 0; c < centroids.length; c++) {
+          const members = features.filter((_, idx) => assignments[idx] === c);
+          if (members.length > 0) {
+            const avgWeek = members.reduce((s, p) => s + p.weekday, 0) / members.length;
+            const avgSlot = members.reduce((s, p) => s + p.timeSlot, 0) / members.length;
+            const avgLng = members.reduce((s, p) => s + p.lng, 0) / members.length;
+            const avgLat = members.reduce((s, p) => s + p.lat, 0) / members.length;
+            const avgCnt = members.reduce((s, p) => s + p.attendCount, 0) / members.length;
+            newCentroids.push({ weekday: avgWeek, timeSlot: avgSlot, lng: avgLng, lat: avgLat, attendCount: avgCnt });
+          } else {
+            newCentroids.push({ ...centroids[c] });
+          }
+        }
+        centroids = newCentroids;
+        iter++;
+      }
+      
+      let inertia = 0;
+      for (let i = 0; i < features.length; i++) {
+        const d = distance(features[i], centroids[assignments[i]]);
+        inertia += d * d;
+      }
+      
+      let silTotal = 0;
+      for (let i = 0; i < features.length; i++) {
+        const cid = assignments[i];
+        let intraSum = 0, intraCnt = 0;
+        for (let j = 0; j < features.length; j++) {
+          if (i !== j && assignments[j] === cid) {
+            intraSum += distance(features[i], features[j]);
+            intraCnt++;
+          }
+        }
+        const a = intraCnt ? intraSum / intraCnt : 0;
+        let minInter = Infinity;
+        const uniqueClusters = [...new Set(assignments)];
+        for (let oc of uniqueClusters) {
+          if (oc === cid) continue;
+          let interSum = 0, interCnt = 0;
+          for (let j = 0; j < features.length; j++) {
+            if (assignments[j] === oc) {
+              interSum += distance(features[i], features[j]);
+              interCnt++;
+            }
+          }
+          const bVal = interCnt ? interSum / interCnt : Infinity;
+          if (bVal < minInter) minInter = bVal;
+        }
+        if (minInter !== Infinity && a + minInter > 0) {
+          const s = (minInter - a) / Math.max(a, minInter);
+          silTotal += s;
+        }
+      }
+      const quality = features.length ? Math.max(0, Math.min(100, (silTotal / features.length + 1) * 50)) : 0;
+      
+      return { clusters: assignments, centroids, inertia, quality };
+    }
+    
+    // 杩愯KMeans
+    function runKMeans() {
+      if (signRecords.length === 0) {
+        alert('娌℃湁绛惧埌鏁版嵁锛佽鍏堢敓鎴愭暟鎹€?);
+        return;
+      }
+      
+      if (fixedCentroids && fixedCentroids.length >= 2) {
+        document.getElementById('cluster-status').innerHTML = `馃敀 浣跨敤鍥哄畾鑱氱被涓績杩涜鍒嗛厤 (${fixedCentroids.length}涓腑蹇?...`;
+        assignUsingFixedCentroids();
+        renderTable();
+        updateStats();
+        document.getElementById('cluster-status').innerHTML = `鉁?鍩轰簬鍥哄畾涓績鍒嗛厤瀹屾垚锛佸叡${fixedCentroids.length}涓绋嬩腑蹇冿紝鎵€鏈夋暟鎹嚜鍔ㄥ綊鍏ユ渶杩戠殑璇剧▼绨囥€?br>馃搶 鍥哄畾涓績涓嶄細鏀瑰彉锛屽闇€鏇存柊璇烽噸鏂?璁句负鍥哄畾鑱氱被涓績"銆俙;
+        return;
+      }
+      
+      let k = parseInt(document.getElementById('k-value').value);
+      if (k > signRecords.length) {
+        alert(`K鍊?${k})瓒呰繃鏁版嵁閲忥紝宸茶皟鏁翠负${signRecords.length}`);
+        k = signRecords.length;
+        document.getElementById('k-value').value = k;
+        document.getElementById('k-display').textContent = k;
+      }
+      
+      document.getElementById('cluster-status').innerHTML = `馃攧 浣跨敤浼犵粺KMeans绠楁硶杩涜鑱氱被 (K=${k})...`;
+      
+      const features = signRecords.map(extractFeatures);
+      const result = kMeansClustering(features, k);
+      
+      for (let i = 0; i < signRecords.length; i++) {
+        signRecords[i].cluster = result.clusters[i];
+        signRecords[i].distanceToCenter = distance(features[i], result.centroids[result.clusters[i]]);
+        let bestCourse = 0, bestDist = Infinity;
+        for (let [cid, course] of Object.entries(COURSE_LIB)) {
+          if (cid === '0') continue;
+          const dist = distance(result.centroids[result.clusters[i]], {
+            weekday: course.baseWeekday, timeSlot: course.baseTimeSlot,
+            lng: course.lng, lat: course.lat, attendCount: course.baseSize
+          });
+          if (dist < bestDist) { bestDist = dist; bestCourse = parseInt(cid); }
+        }
+        signRecords[i].recommendedCourse = bestCourse;
+      }
+      
+      document.getElementById('stat-inertia').textContent = result.inertia.toFixed(4);
+      document.getElementById('stat-accuracy').textContent = Math.round(result.quality) + '%';
+      document.getElementById('stat-centers').textContent = '0';
+      
+      renderTable();
+      updateStats();
+      document.getElementById('cluster-status').innerHTML = `鉁?KMeans鑱氱被瀹屾垚锛並=${k}锛屾儻鎬?${result.inertia.toFixed(4)}锛岃川閲?${Math.round(result.quality)}%<br>馃挕 寤鸿鐐瑰嚮"灏嗗綋鍓嶆墜鍔ㄥ綊绫昏涓哄浐瀹氳仛绫讳腑蹇?淇濆瓨姝ょ粨鏋溿€俙;
+    }
+    
+    // 璁剧疆鍥哄畾鑱氱被涓績
+    function setFixedCentroids() {
+      const result = buildCentroidsFromManual();
+      if (!result) return;
+      
+      fixedCentroids = result.centroids;
+      fixedCentroidMapping = result.mapping;
+      
+      assignUsingFixedCentroids();
+      renderTable();
+      updateStats();
+      
+      const courseNames = fixedCentroids.map(c => COURSE_LIB[c.courseId]?.name || c.courseId).join(', ');
+      document.getElementById('cluster-status').innerHTML = `鉁?宸茶缃?${fixedCentroids.length} 涓浐瀹氳仛绫讳腑蹇? ${courseNames}<br>馃敀 浠婂悗鎵€鏈夎仛绫诲皢浠ユ涓轰腑蹇冿紝鏂扮鍒版暟鎹細鑷姩褰掑叆鏈€杩戠殑璇剧▼绫诲埆锛乣;
+      document.getElementById('stat-centers').textContent = fixedCentroids.length;
+    }
+    
+    // 娓呴櫎鍥哄畾鑱氱被涓績
+    function clearFixedCentroids() {
+      if (confirm('纭畾瑕佹竻闄ゅ浐瀹氳仛绫讳腑蹇冨悧锛熸竻闄ゅ悗灏嗘仮澶嶄紶缁烱Means鑱氱被妯″紡銆?)) {
+        fixedCentroids = null;
+        fixedCentroidMapping = null;
+        for (let rec of signRecords) {
+          rec.cluster = -1;
+          rec.distanceToCenter = 0;
+          rec.recommendedCourse = null;
+        }
+        renderTable();
+        updateStats();
+        document.getElementById('stat-centers').textContent = '0';
+        document.getElementById('stat-inertia').textContent = '0';
+        document.getElementById('stat-accuracy').textContent = '0%';
+        document.getElementById('cluster-status').innerHTML = '馃棏锔?鍥哄畾鑱氱被涓績宸叉竻闄わ紝鐜板湪鍙互浣跨敤浼犵粺KMeans鑱氱被銆?;
+      }
+    }
+    
+    // 搴旂敤鑱氱被缁撴灉
+    function applyClustering() {
+      let changes = 0;
+      for (let rec of signRecords) {
+        if (rec.recommendedCourse && rec.recommendedCourse > 0 && rec.recommendedCourse !== rec.courseId) {
+          rec.courseId = rec.recommendedCourse;
+          changes++;
+        }
+      }
+      renderTable();
+      document.getElementById('cluster-status').innerHTML += `<br>鉁?宸插簲鐢ㄨ仛绫荤粨鏋滐紝淇敼浜?${changes} 鏉¤褰曠殑璇剧▼褰掑睘銆俙;
+      updateStats();
+    }
+    
+    // 鐢熸垚鎵归噺绛惧埌鏁版嵁锛堟棩鏈熶笉鍚岋紝鏄熸湡鏃舵鐩稿悓锛?
+    function generateBatchSignins() {
+      const types = ["绛惧埌", "鎷嶇収绛惧埌"];
+      
+      for (let i = 0; i < 30; i++) {
+        // 闅忔満閫夋嫨涓€涓ā鏉?
+        const template = TEMPLATE_SCHEDULES[Math.floor(Math.random() * TEMPLATE_SCHEDULES.length)];
+        
+        // 鍚戝悗寤剁画1-8鍛紙鏈潵鏃ユ湡锛?
+        const weekOffset = 1 + Math.floor(Math.random() * 8); // 1-8鍛ㄥ悗
+        
+        // 鏍规嵁妯℃澘鐢熸垚鍏蜂綋鏃堕棿
+        const timeStr = generateTimeString(template.weekday, template.timeSlot, weekOffset);
+        
+        // 鍦ㄥ搴旇绋嬬殑鍙傝€冪偣闄勮繎鐢熸垚GPS
+        const courseGPS = COURSE_LIB[template.defaultCourseId];
+        let gps;
+        if (courseGPS) {
+          gps = {
+            lng: courseGPS.lng + (Math.random() - 0.5) * 0.006,
+            lat: courseGPS.lat + (Math.random() - 0.5) * 0.006
+          };
+          gps.lng = parseFloat(gps.lng.toFixed(6));
+          gps.lat = parseFloat(gps.lat.toFixed(6));
+        } else {
+          gps = randomGPS();
+        }
+        
+        // 鐢熸垚绛惧埌浜烘暟
+        const baseSize = courseGPS ? courseGPS.baseSize : 40;
+        const count = Math.floor(baseSize + (Math.random() - 0.5) * 15);
+        
+        const newRec = {
+          id: nextId++,
+          time: timeStr,
+          roomId: `SIGN-${nextId}`,
+          type: types[i % 2],
+          count: count,
+          weekday: template.weekday,
+          timeSlot: template.timeSlot,
+          lng: gps.lng,
+          lat: gps.lat,
+          attendCount: count,
+          courseId: 0,  // 榛樿涓?鏈€夋嫨"
+          cluster: -1,
+          distanceToCenter: 0,
+          recommendedCourse: null
+        };
+        signRecords.push(newRec);
+      }
+      
+      renderTable();
+      updateStats();
+      document.getElementById('cluster-status').innerHTML = `馃搳 宸茬敓鎴?${signRecords.length} 鏉＄鍒拌褰曪紝鎵€鏈夋暟鎹垵濮嬪綊涓?鏈€夋嫨"銆?br>鉁?璇锋墜鍔ㄦ爣娉ㄩ儴鍒嗘暟鎹紙鑷冲皯2闂ㄤ笉鍚岃绋嬶級锛岀劧鍚庣偣鍑?灏嗗綋鍓嶆墜鍔ㄥ綊绫昏涓哄浐瀹氳仛绫讳腑蹇?寤虹珛妯″瀷锛屾渶鍚庤繍琛孠Means鑱氱被锛乣;
+    }
+    
+    // 娣诲姞鍗曟潯绛惧埌
+    function addSingleSignin() {
+      const template = TEMPLATE_SCHEDULES[Math.floor(Math.random() * TEMPLATE_SCHEDULES.length)];
+      const weekOffset = Math.floor(Math.random() * 8);
+      const timeStr = generateTimeString(template.weekday, template.timeSlot, weekOffset);
+      
+      const courseGPS = COURSE_LIB[template.defaultCourseId];
+      let gps;
+      if (courseGPS) {
+        gps = {
+          lng: courseGPS.lng + (Math.random() - 0.5) * 0.006,
+          lat: courseGPS.lat + (Math.random() - 0.5) * 0.006
+        };
+        gps.lng = parseFloat(gps.lng.toFixed(6));
+        gps.lat = parseFloat(gps.lat.toFixed(6));
+      } else {
+        gps = randomGPS();
+      }
+      
+      const baseSize = courseGPS ? courseGPS.baseSize : 40;
+      const count = Math.floor(baseSize + (Math.random() - 0.5) * 15);
+      
+      const newRec = {
+        id: nextId++,
+        time: timeStr,
+        roomId: `SIGN-${nextId}`,
+        type: Math.random() > 0.5 ? "绛惧埌" : "鎷嶇収绛惧埌",
+        count: count,
+        weekday: template.weekday,
+        timeSlot: template.timeSlot,
+        lng: gps.lng,
+        lat: gps.lat,
+        attendCount: count,
+        courseId: 0,  // 榛樿涓?鏈€夋嫨"
+        cluster: -1,
+        distanceToCenter: 0,
+        recommendedCourse: null
+      };
+      signRecords.push(newRec);
+      
+      renderTable();
+      updateStats();
+    }
+    
+    // 鍔犺浇鍒濆鏍囨敞鏁版嵁锛堢敤浜庢紨绀猴紝宸叉爣娉ㄥソ璇剧▼锛?
+    function loadInitialData() {
+      signRecords = [];
+      nextId = 0;
+      fixedCentroids = null;
+      fixedCentroidMapping = null;
+      
+      const initialData = [
+        { time: "2026-03-30 08:10:00", roomId: "涓€鏁?01", type: "绛惧埌", count: 42, weekday: 1, timeSlot: 1, lng: 116.3532, lat: 40.0044, courseId: 1 },
+        { time: "2026-03-30 08:12:00", roomId: "涓€鏁?02", type: "鎷嶇収绛惧埌", count: 41, weekday: 1, timeSlot: 1, lng: 116.3535, lat: 40.0046, courseId: 1 },
+        { time: "2026-03-30 10:00:00", roomId: "浜屾暀201", type: "绛惧埌", count: 38, weekday: 1, timeSlot: 2, lng: 116.3550, lat: 40.0055, courseId: 2 },
+        { time: "2026-03-30 10:05:00", roomId: "浜屾暀202", type: "鎷嶇収绛惧埌", count: 37, weekday: 1, timeSlot: 2, lng: 116.3553, lat: 40.0057, courseId: 2 },
+        { time: "2026-03-31 08:05:00", roomId: "涓夋暀301", type: "绛惧埌", count: 48, weekday: 2, timeSlot: 1, lng: 116.3575, lat: 40.0068, courseId: 3 },
+        { time: "2026-03-31 08:08:00", roomId: "涓夋暀302", type: "鎷嶇収绛惧埌", count: 49, weekday: 2, timeSlot: 1, lng: 116.3578, lat: 40.0070, courseId: 3 },
+        { time: "2026-04-01 13:40:00", roomId: "鍥涙暀401", type: "鎷嶇収绛惧埌", count: 34, weekday: 3, timeSlot: 3, lng: 116.3510, lat: 40.0032, courseId: 4 },
+        { time: "2026-04-01 13:45:00", roomId: "鍥涙暀402", type: "绛惧埌", count: 33, weekday: 3, timeSlot: 3, lng: 116.3508, lat: 40.0030, courseId: 4 },
+        { time: "2026-04-02 10:20:00", roomId: "浜旀暀501", type: "绛惧埌", count: 46, weekday: 4, timeSlot: 1, lng: 116.3590, lat: 40.0080, courseId: 5 },
+        { time: "2026-04-02 10:25:00", roomId: "浜旀暀502", type: "鎷嶇収绛惧埌", count: 47, weekday: 4, timeSlot: 1, lng: 116.3593, lat: 40.0082, courseId: 5 },
+        { time: "2026-04-03 15:30:00", roomId: "鍏暀601", type: "绛惧埌", count: 40, weekday: 5, timeSlot: 2, lng: 116.3545, lat: 40.0060, courseId: 6 },
+        { time: "2026-04-03 15:35:00", roomId: "鍏暀602", type: "鎷嶇収绛惧埌", count: 39, weekday: 5, timeSlot: 2, lng: 116.3548, lat: 40.0062, courseId: 6 }
+      ];
+      
+      for (let item of initialData) {
+        signRecords.push({
+          id: nextId++,
+          time: item.time,
+          roomId: item.roomId,
+          type: item.type,
+          count: item.count,
+          weekday: item.weekday,
+          timeSlot: item.timeSlot,
+          lng: item.lng,
+          lat: item.lat,
+          attendCount: item.count,
+          courseId: item.courseId,
+          cluster: -1,
+          distanceToCenter: 0,
+          recommendedCourse: null
+        });
+      }
+      
+      renderTable();
+      updateStats();
+      document.getElementById('stat-centers').textContent = '0';
+      document.getElementById('cluster-status').innerHTML = `馃摎 宸插姞杞藉垵濮嬫爣娉ㄦ暟鎹紝鍏?${signRecords.length} 鏉¤褰曪紝姣忛棬璇剧▼閮芥湁鏍囨敞鏍蜂緥銆?br>鉁?鐐瑰嚮"灏嗗綋鍓嶆墜鍔ㄥ綊绫昏涓哄浐瀹氳仛绫讳腑蹇?鍗冲彲寤虹珛绋冲畾鐨勮仛绫绘ā鍨嬶紒`;
+    }
+    
+	// 绋冲畾鐨勫鐢熷簱锛?00浜猴紝瀛﹀彿鍜屼汉鍚嶅浐瀹氾級
+	const STUDENT_DB = (function() {
+	  const surnames = ['寮?, '鏉?, '鐜?, '璧?, '闄?, '鍒?, '瀛?, '鍛?, '鍚?, '閮?, '鏋?, '閮?, '鍞?, '娌?, '瀹?, '闊?, '褰?, '闄?, '娆ч槼', '鎱曞', '璇歌憶', '涓婂畼', '涓滄柟', '鐙', '浠ょ嫄', '瀹囨枃', '鎱曞', '绔湪', '鍗楀', '涓囦繜'];
+	  const names = ['浼?, '鑺?, '濞?, '鏁?, '闈?, '娑?, '鍐?, '寮?, '楣?, '瀹?, '娲?, '鏅?, '鏇?, '鐜?, '鐞?, '杞?, '娴?, '鐒?, '瀛愯僵', '涓€璇?, '闆ㄦ', '鏄庡摬', '鎬濈惇', '瀹囪埅', '瀛愭兜', '娆ｆ€?, '鑷磋繙', '姊撴兜', '鑻ユ洣', '澶╁畤'];
+	  
+	  const students = [];
+	  for (let i = 1; i <= 100; i++) {
+	    // 瀛﹀彿鏍煎紡锛?0233XX2XXXXX锛圶X涓洪殢鏈烘暟瀛楋紝鏈€鍚?浣嶄负搴忓彿锛?
+	    const suffix = String(i).padStart(5, '0');
+	    const randomMid = String(Math.floor(Math.random() * 90) + 10);
+	    const sid = `20233${randomMid}2${suffix}`;
+	    
+	    const surname = surnames[Math.floor(Math.random() * surnames.length)];
+	    const name = names[Math.floor(Math.random() * names.length)];
+	    const fullName = surname + name;
+	    students.push({ sid: sid, name: fullName });
+	  }
+	  return students;
+	})();
+	
+	// 鏍规嵁浜烘暟鑾峰彇瀛︾敓瀛愰泦锛堝彇鍓峃涓紝淇濊瘉绋冲畾鎬э級
+	function getStudentSubset(count) {
+	  return STUDENT_DB.slice(0, Math.min(count, STUDENT_DB.length));
+	}
+	
+    // 涓嬭浇鎸囧畾璇剧▼鐨勫鐢熺鍒版槑缁嗚〃
+async function downloadCourseAttendance(courseId) {
+    if (signRecords.length === 0) {
+        alert('娌℃湁绛惧埌鏁版嵁锛?);
+        return;
+    }
+
+    const courseName = COURSE_LIB[courseId]?.name || '鏈煡璇剧▼';
+
+    // ========================================
+    // 1锔忊儯 鏁版嵁鍑嗗 鈥?鍜屽師鍑芥暟瀹屽叏涓€鑷?
+    // ========================================
+    const courseRecords = signRecords.filter(r => r.courseId === courseId);
+
+    if (courseRecords.length === 0) {
+        alert(`璇剧▼"${courseName}"娌℃湁绛惧埌鏁版嵁锛乣);
+        return;
+    }
+
+    courseRecords.sort((a, b) => new Date(a.time.replace(/-/g, '/')) - new Date(new Date(b.time.replace(/-/g, '/'))));
+
+    const maxAttendCount = Math.max(...courseRecords.map(r => r.count), 30);
+    const studentCount = Math.min(maxAttendCount, STUDENT_DB.length);
+    const studentList = getStudentSubset(studentCount);
+
+    const uniqueTimes = courseRecords.map(r => r.time);
+
+    const attendanceMap = new Map();
+    for (let student of studentList) {
+        attendanceMap.set(student.sid, {
+            sid: student.sid,
+            name: student.name,
+            checkins: new Map(),
+            totalCheckin: 0,
+            revokedCheckin: 0,
+            choiceQuestion: 0,
+            shortAnswerQuestion: 0
+        });
+    }
+
+    for (let i = 0; i < uniqueTimes.length; i++) {
+        const timePoint = uniqueTimes[i];
+        const record = courseRecords[i];
+        let expectedCount = record ? record.count : Math.floor(Math.random() * 35) + 15;
+        expectedCount = Math.min(expectedCount, studentList.length);
+
+        const allStudents = [...studentList];
+        for (let j = allStudents.length - 1; j > 0; j--) {
+            const k = Math.floor(Math.random() * (j + 1));
+            [allStudents[j], allStudents[k]] = [allStudents[k], allStudents[j]];
+        }
+
+        const checkedInStudents = allStudents.slice(0, expectedCount);
+
+        for (let student of studentList) {
+            const studentRec = attendanceMap.get(student.sid);
+            const isCheckedIn = checkedInStudents.some(s => s.sid === student.sid);
+            studentRec.checkins.set(timePoint, isCheckedIn ? 1 : 0);
+            if (isCheckedIn) {
+                studentRec.totalCheckin++;
+            }
+        }
+    }
+
+    // 鐢熸垚鏃堕棿鍒楁爣棰?
+    const timeColumns = uniqueTimes.map(t => {
+        let date;
+        if (t.includes('-')) {
+            date = new Date(t.replace(/-/g, '/'));
+        } else {
+            date = new Date(t);
+        }
+
+        if (isNaN(date.getTime())) {
+            const numbers = t.match(/\d+/g);
+            if (numbers && numbers.length >= 6) {
+                const year = numbers[0].slice(-2);
+                const month = numbers[1].padStart(2, '0');
+                const day = numbers[2].padStart(2, '0');
+                const hour = numbers[3].padStart(2, '0');
+                const minute = numbers[4].padStart(2, '0');
+                const second = numbers[5] ? numbers[5].padStart(2, '0') : '00';
+                return `T_${year}${month}${day}${hour}${minute}${second}`;
+            }
+            return `T_000000000000`;
+        }
+
+        const year = date.getFullYear().toString().slice(-2);
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const hour = date.getHours().toString().padStart(2, '0');
+        const minute = date.getMinutes().toString().padStart(2, '0');
+        const second = date.getSeconds().toString().padStart(2, '0');
+        return `T_${year}${month}${day}${hour}${minute}${second}`;
+    });
+
+    // ========================================
+    // 2锔忊儯 鏋勫缓 TXT 鏂囨湰鍐呭锛堜笉鍐嶇洿鎺ヤ笅杞斤級
+    // ========================================
+    const headers = ['sid', 'name', ...timeColumns, 'total_checkin',
+                     'revoked_checkin', 'choice_question',
+                     'short_answer_question', 'short_answer_question'];
+
+    let rows = [];
+    rows.push(headers.join('\t\t'));
+
+    for (let student of studentList) {
+        const studentRec = attendanceMap.get(student.sid);
+        const row = [
+            studentRec.sid,
+            studentRec.name,
+            ...uniqueTimes.map(t => studentRec.checkins.get(t) || 0),
+            studentRec.totalCheckin,
+            studentRec.revokedCheckin,
+            studentRec.choiceQuestion,
+            studentRec.shortAnswerQuestion,
+            'short_answer_question'
+        ];
+        rows.push(row.join('\t\t'));
+    }
+
+    // 鐢熸垚鏂囨湰鍐呭锛堝姞 BOM 澶达級
+    const txtContent = "\uFEFF" + rows.join('\n');
+
+    // ========================================
+    // 3锔忊儯 鍙戦€佸埌鍚庣锛岃幏鍙?Excel 骞朵笅杞?
+    // ========================================
+    const SERVER_URL = '/api/excel/generate';
+
+    // 灏嗘枃鏈唴瀹硅浆鎴?File 瀵硅薄锛屾斁鍏?FormData
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+    const file = new File([blob], `${courseName}_绛惧埌鏄庣粏.txt`, { type: 'text/plain;charset=utf-8' });
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        // 鏄剧ず鍔犺浇鎻愮ず
+        const loadingMsg = `鈴?姝ｅ湪鐢熸垚"${courseName}"鐨凟xcel...`;
+        console.log(loadingMsg);
+
+        const response = await fetch(SERVER_URL, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`鏈嶅姟鍣ㄩ敊璇? ${response.status} ${response.statusText}`);
+        }
+
+        // 浠庡搷搴斿ご鑾峰彇鏂囦欢鍚?
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let downloadName = `${courseName}_绛惧埌鏄庣粏.xlsx`;
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename\*?=(?:UTF-8''|"?)(.+?)"?$/);
+            if (match) {
+                downloadName = decodeURIComponent(match[1]);
+            }
+        }
+
+        // 涓嬭浇 Excel 鏂囦欢
+        const excelBlob = await response.blob();
+        const url = window.URL.createObjectURL(excelBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        // 鏄剧ず缁熻淇℃伅
+        let totalCheckins = 0;
+        for (let student of studentList) {
+            totalCheckins += attendanceMap.get(student.sid).totalCheckin;
+        }
+        const avgCheckinRate = (totalCheckins / (studentList.length * uniqueTimes.length) * 100).toFixed(1);
+        alert(`鉁?宸蹭笅杞?${courseName}"绛惧埌Excel锛乗n馃搳 缁熻锛?{studentList.length}鍚嶅鐢燂紝${uniqueTimes.length}娆¤鍫俓n馃搱 骞冲潎绛惧埌鐜囷細${avgCheckinRate}%`);
+
+    } catch (error) {
+        console.error('鐢熸垚Excel澶辫触:', error);
+        alert(`鉂?鐢熸垚Excel澶辫触: ${error.message}\n\n璇风‘璁わ細\n1. 鍚庣鏈嶅姟宸插惎鍔╘n2. 鏈嶅姟鍣ㄥ湴鍧€姝ｇ‘: ${SERVER_URL}`);
+    }
+}
+
+    
+    function shareTo(recordId, targetWorkerId) {
+      if (!targetWorkerId) {
+        alert('璇疯緭鍏ュ鏂瑰伐鍙?);
+        return;
+      }
+      const record = signRecords.find(r => r.id === recordId);
+      if (!record) return;
+      const courseName = COURSE_LIB[record.courseId]?.name || '鏈€夋嫨';
+      const shareMsg = `鍒嗕韩璇惧爞绛惧埌淇℃伅:\n鏃堕棿:${record.time}\n璇惧爞ID:${record.roomId}\n绫诲瀷:${record.type}\n绛惧埌浜烘暟:${record.count}\nGPS浣嶇疆:${record.lng},${record.lat}\n褰掑睘璇剧▼:${courseName}\n鍒嗕韩浜?demo_user_001\n鎺ユ敹浜哄伐鍙?${targetWorkerId}`;
+      alert(`宸插垎浜粰宸ュ彿 ${targetWorkerId}:\n${shareMsg}`);
+    }
+    
+    function renderTable() {
+      const tbody = document.getElementById('signin-tbody');
+      tbody.innerHTML = '';
+      
+      if (signRecords.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align: center;">鏆傛棤鏁版嵁锛岃鐢熸垚绛惧埌鏁版嵁</td></tr>';
+        return;
+      }
+      
+      for (const rec of signRecords) {
+        const row = tbody.insertRow();
+        const distPercent = rec.distanceToCenter ? Math.min(100, rec.distanceToCenter * 80) : 0;
+        const isUnspecified = rec.courseId === 0;
+        
+        row.innerHTML = `
+          <td style="font-size: 11px;">${rec.time}</td>
+          <td>${rec.roomId}</td>
+          <td class="${rec.type === '鎷嶇収绛惧埌' ? 'type2' : 'type1'}">${rec.type}</td>
+          <td>${rec.count}</td>
+          <td><input type="number" class="feature-input" data-id="${rec.id}" data-field="weekday" value="${rec.weekday}" min="1" max="7" style="width: 50px;"> <small>鍛?/small></td>
+          <td><input type="number" class="feature-input" data-id="${rec.id}" data-field="timeSlot" value="${rec.timeSlot}" min="1" max="8" style="width: 50px;"> <small>鑺?/small></td>
+          <td><input type="text" class="gps-input" data-id="${rec.id}" data-field="lng" value="${rec.lng.toFixed(6)}" style="width: 90px;"></td>
+          <td><input type="text" class="gps-input" data-id="${rec.id}" data-field="lat" value="${rec.lat.toFixed(6)}" style="width: 90px;"></td>
+          <td>
+            <select class="course-select" data-id="${rec.id}" style="width: 100px;">
+              ${Object.entries(COURSE_LIB).map(([id, course]) => 
+                `<option value="${id}" ${rec.courseId == id ? 'selected' : ''} ${id == '0' ? 'style="color:#999;"' : ''}>${course.name}</option>`
+              ).join('')}
+            </select>
+            ${rec.recommendedCourse ? `<span style="font-size: 10px; color: green;"> 鑽?/span>` : ''}
+            ${fixedCentroids && fixedCentroids.length > 0 && rec.cluster >= 0 ? `<span class="center-badge">绨?{rec.cluster}</span>` : ''}
+          </td>
+          <td>
+            <div class="distance-indicator">
+              <div class="distance-fill" style="width: ${distPercent}%"></div>
+            </div>
+            <span style="font-size: 10px;">${rec.cluster >= 0 ? `绨?{rec.cluster} ${rec.distanceToCenter ? rec.distanceToCenter.toFixed(3) : ''}` : '鏈仛绫?}</span>
+          </td>
+          <td><button class="download-btn" onclick="downloadCourseAttendance(${rec.courseId})">馃摜 涓嬭浇鍏ㄩ儴</button>
+          <td>
+            <input type="text" id="share-worker-${rec.id}" placeholder="宸ュ彿" class="share-input" style="width: 70px;">
+            <button class="share-btn" onclick="shareTo(${rec.id}, document.getElementById('share-worker-${rec.id}').value)">鍒嗕韩</button>
+          </td>
+        `;
+      }
+      
+      // 缁戝畾鐗瑰緛淇敼浜嬩欢
+      document.querySelectorAll('.feature-input, .gps-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const id = parseInt(e.target.dataset.id);
+          const field = e.target.dataset.field;
+          let value = e.target.value;
+          const record = signRecords.find(r => r.id === id);
+          if (record) {
+            if (field === 'lng' || field === 'lat') {
+              record[field] = parseFloat(value);
+            } else {
+              record[field] = parseInt(value);
+            }
+          }
+          renderTable();
+        });
+      });
+      
+      document.querySelectorAll('.course-select').forEach(select => {
+        select.addEventListener('change', (e) => {
+          const id = parseInt(e.target.dataset.id);
+          const courseId = parseInt(e.target.value);
+          const record = signRecords.find(r => r.id === id);
+          if (record) {
+            record.courseId = courseId;
+          }
+        });
+      });
+      
+      updateStats();
+    }
+    
+    function updateStats() {
+      document.getElementById('stat-total').textContent = signRecords.length;
+      const clusteredCount = signRecords.filter(r => r.cluster >= 0).length;
+      document.getElementById('stat-clustered').textContent = clusteredCount;
+    }
+    
+    function resetAll() {
+      if (confirm('纭畾瑕侀噸缃墍鏈夋暟鎹悧锛?)) {
+        signRecords = [];
+        nextId = 0;
+        fixedCentroids = null;
+        fixedCentroidMapping = null;
+        renderTable();
+        updateStats();
+        document.getElementById('stat-centers').textContent = '0';
+        document.getElementById('stat-inertia').textContent = '0';
+        document.getElementById('stat-accuracy').textContent = '0%';
+        document.getElementById('cluster-status').innerHTML = '馃攧 鎵€鏈夋暟鎹凡閲嶇疆锛岃鐢熸垚鏂版暟鎹垨鍔犺浇鍒濆鏁版嵁銆?;
+      }
+    }
+    
+    function showFeatures() {
+      if (signRecords.length === 0) { alert('鏃犳暟鎹?); return; }
+      let msg = "鐗瑰緛淇℃伅 (鏄熸湡,鏃舵,缁忓害,绾害,浜烘暟,璇剧▼):\n";
+      signRecords.slice(0, 20).forEach(r => {
+        msg += `${r.time}: 鍛?{r.weekday}, 鏃舵${r.timeSlot}, (${r.lng.toFixed(5)},${r.lat.toFixed(5)}), 浜烘暟${r.attendCount} 鈫?${COURSE_LIB[r.courseId]?.name || '鏈€夋嫨'}\n`;
+      });
+      if (signRecords.length > 20) msg += `\n... 鍏?{signRecords.length}鏉¤褰昤;
+      alert(msg);
+    }
+    
+    // 浜嬩欢缁戝畾
+    document.getElementById('run-kmeans').addEventListener('click', runKMeans);
+    document.getElementById('apply-clustering').addEventListener('click', applyClustering);
+    document.getElementById('init-centers').addEventListener('click', setFixedCentroids);
+    document.getElementById('clear-centers').addEventListener('click', clearFixedCentroids);
+    document.getElementById('reset-btn').addEventListener('click', resetAll);
+    document.getElementById('show-features').addEventListener('click', showFeatures);
+    
+    const kSlider = document.getElementById('k-value');
+    const kDisplay = document.getElementById('k-display');
+    kSlider.addEventListener('input', (e) => { kDisplay.textContent = e.target.value; });
+    
+    window.generateBatchSignins = generateBatchSignins;
+    window.addSingleSignin = addSingleSignin;
+    window.loadInitialData = loadInitialData;
+    window.downloadCourseAttendance = downloadCourseAttendance;
+    window.shareTo = shareTo;
+    
+    // 涓嶈嚜鍔ㄥ姞杞芥暟鎹紝璁╃敤鎴烽€夋嫨
+  </script>
+</body>
+</html>
+
