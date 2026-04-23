@@ -44,7 +44,8 @@ data/media/
 data/tmp_tests_run/
 data/reports/
 images/
-models/
+models/*
+!models/README.md
 
 # Large document/media formats (non-code)
 *.pptx
