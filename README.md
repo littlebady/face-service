@@ -1,6 +1,6 @@
 ﻿# Face Check-in Service
-本项目安装包已上传至网盘：https://pan.quark.cn/s/5235cf3fda5c 提取码：MWTv
-Face recognition and geo-fence check-in service based on FastAPI + InsightFace.
+本项目安装包已上传至网盘：https://pan.quark.cn/s/5235cf3fda5c 提取码：MWTv        
+- Face recognition and geo-fence check-in service based on FastAPI + InsightFace.
 
 ## Features
 
