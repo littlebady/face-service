@@ -10,7 +10,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 from face_model import detect_and_extract
 
 
-def test_recognition_time(image_path: Path, iterations: int = 10) -> float:
+def benchmark_recognition_time(image_path: Path, iterations: int = 10) -> float:
     """测试人脸识别时间
     
     Args:
@@ -57,4 +57,4 @@ if __name__ == "__main__":
     test_image = Path(__file__).resolve().parent / "images" / "zhanghanwen.jpg"
     
     # 运行性能测试
-    test_recognition_time(test_image, iterations=10)
+    benchmark_recognition_time(test_image, iterations=10)

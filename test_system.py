@@ -6,7 +6,7 @@ from pathlib import Path
 
 from config import BASE_DIR, DB_PATH
 
-def test_face_detection():
+def check_face_detection():
     print("=" * 50)
     print("测试1: 人脸检测和特征提取")
     print("=" * 50)
@@ -41,7 +41,7 @@ def test_face_detection():
         traceback.print_exc()
         return False
 
-def test_database():
+def check_database():
     print("\n" + "=" * 50)
     print("测试2: 数据库操作")
     print("=" * 50)
@@ -67,7 +67,7 @@ def test_database():
         traceback.print_exc()
         return False
 
-def test_face_matching():
+def check_face_matching():
     print("\n" + "=" * 50)
     print("测试3: 人脸匹配功能")
     print("=" * 50)
@@ -103,7 +103,7 @@ def test_face_matching():
         traceback.print_exc()
         return False
 
-def test_api_creation():
+def check_api_creation():
     print("\n" + "=" * 50)
     print("测试4: API创建测试")
     print("=" * 50)
@@ -136,10 +136,10 @@ def main():
     print(f"📁 当前工作目录: {os.getcwd()}")
     
     tests = [
-        ("人脸检测", test_face_detection),
-        ("数据库操作", test_database),
-        ("人脸匹配", test_face_matching),
-        ("API创建", test_api_creation),
+        ("人脸检测", check_face_detection),
+        ("数据库操作", check_database),
+        ("人脸匹配", check_face_matching),
+        ("API创建", check_api_creation),
     ]
     
     passed = 0
