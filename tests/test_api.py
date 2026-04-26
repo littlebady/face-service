@@ -325,6 +325,61 @@ class ApiTestCase(unittest.TestCase):
         self.assertIn("backend", stats_payload["stats"])
         self.assertIn("size", stats_payload["stats"])
 
+    def test_profile_update_and_profile_face_registration(self):
+        register_resp = self.client.post(
+            "/auth/register",
+            json={
+                "username": "profile_user",
+                "password": "profile123",
+                "display_name": "初始昵称",
+            },
+        )
+        self.assertEqual(register_resp.status_code, 200)
+        token = register_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        profile_resp = self.client.get("/auth/profile", headers=headers)
+        self.assertEqual(profile_resp.status_code, 200)
+        profile_payload = profile_resp.json()["profile"]
+        self.assertFalse(profile_payload["has_face"])
+        self.assertEqual(profile_payload["face_count"], 0)
+
+        update_resp = self.client.put(
+            "/auth/profile",
+            headers=headers,
+            json={"display_name": "新昵称"},
+        )
+        self.assertEqual(update_resp.status_code, 200)
+        self.assertEqual(update_resp.json()["user"]["display_name"], "新昵称")
+
+        image_bytes = self.make_image_bytes()
+        first_face_resp = self.client.post(
+            "/auth/profile/face/register",
+            headers=headers,
+            files={"file": ("profile.jpg", image_bytes, "image/jpeg")},
+        )
+        self.assertEqual(first_face_resp.status_code, 200)
+        self.assertTrue(first_face_resp.json()["ok"])
+        self.assertEqual(first_face_resp.json()["face_count"], 1)
+
+        second_face_resp = self.client.post(
+            "/auth/profile/face/register",
+            headers=headers,
+            files={"file": ("profile2.jpg", image_bytes, "image/jpeg")},
+        )
+        self.assertEqual(second_face_resp.status_code, 200)
+        self.assertTrue(second_face_resp.json()["ok"])
+        self.assertEqual(second_face_resp.json()["face_count"], 1)
+        self.assertGreaterEqual(second_face_resp.json()["replaced_faces"], 1)
+
+        profile_resp2 = self.client.get("/auth/profile", headers=headers)
+        self.assertEqual(profile_resp2.status_code, 200)
+        profile_payload2 = profile_resp2.json()["profile"]
+        self.assertTrue(profile_payload2["has_face"])
+        self.assertEqual(profile_payload2["face_count"], 1)
+        self.assertEqual(profile_payload2["display_name"], "新昵称")
+        self.assertEqual(profile_payload2["latest_face"]["user_id"], profile_payload2["user_id"])
+
     def test_admin_requires_token(self):
         response = self.client.get("/admin/checkins/export")
         self.assertEqual(response.status_code, 401)

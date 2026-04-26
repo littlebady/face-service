@@ -487,6 +487,7 @@ async def app_dashboard_page() -> str:
       </div>
       <div class="actions">
         <button class="btn-soft" id="btnRefresh">刷新</button>
+        <button class="btn-soft" id="btnProfile">个人主页</button>
         <button class="btn-soft" id="btnLegacy">旧版首页</button>
         <button class="btn-dark" id="btnLogout">退出</button>
       </div>
@@ -853,6 +854,10 @@ async def app_dashboard_page() -> str:
       window.location.href = "/checkin-ui";
     });
 
+    $("btnProfile").addEventListener("click", () => {
+      window.location.href = "/app/profile";
+    });
+
     $("btnLogout").addEventListener("click", async () => {
       try {
         await api("/auth/logout", { method: "POST" });
@@ -869,6 +874,433 @@ async def app_dashboard_page() -> str:
       try {
         await loadMe();
         await refreshAll();
+      } catch (err) {
+        localStorage.removeItem(TOKEN_KEY);
+        alert(err.message || String(err));
+        window.location.href = "/app/login";
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
+"""
+
+
+@router.get("/app/profile", response_class=HTMLResponse, summary="Profile")
+async def app_profile_page() -> str:
+    return """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人主页</title>
+  <style>
+    :root {
+      --bg: #f2f7ff;
+      --card: #ffffff;
+      --line: #e4ebf5;
+      --text: #162238;
+      --muted: #64748b;
+      --primary: #0f5fd7;
+      --accent: #0e1f45;
+      --ok: #157347;
+      --err: #b42318;
+      --warn: #9a6700;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 360px at 0% 0%, #dde9ff, transparent 70%),
+        radial-gradient(760px 340px at 100% 100%, #d8f1ff, transparent 68%),
+        var(--bg);
+    }
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 20px 18px 30px;
+    }
+    .topbar {
+      background: linear-gradient(120deg, #0f3f8f, #1f70e3);
+      color: #fff;
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      box-shadow: 0 12px 28px rgba(16, 33, 75, 0.28);
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .topbar p {
+      margin: 6px 0 0;
+      opacity: .95;
+      font-size: 14px;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-dark { background: var(--accent); color: #fff; }
+    .btn-soft { background: #eaf1ff; color: #1b3f80; }
+    .grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid #e9eef8;
+      border-radius: 14px;
+      box-shadow: 0 10px 22px rgba(15, 33, 75, 0.08);
+      padding: 14px;
+    }
+    .span-5 { grid-column: span 5; }
+    .span-7 { grid-column: span 7; }
+    .span-12 { grid-column: span 12; }
+    @media (max-width: 980px) {
+      .span-5, .span-7, .span-12 { grid-column: span 12; }
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .line {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .line label {
+      font-size: 12px;
+      color: #314055;
+      font-weight: 700;
+    }
+    input {
+      border: 1px solid #d6e0ef;
+      background: #fbfdff;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 13px;
+      outline: none;
+      width: 100%;
+    }
+    input:focus {
+      border-color: #90b4ff;
+      box-shadow: 0 0 0 3px #e7f0ff;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 10px;
+      margin-top: 6px;
+      font-size: 13px;
+    }
+    .info-grid .k { color: var(--muted); }
+    .status {
+      margin-top: 8px;
+      min-height: 19px;
+      font-size: 13px;
+    }
+    .ok { color: var(--ok); }
+    .err { color: var(--err); }
+    .warn { color: var(--warn); }
+    .hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .preview-wrap {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 820px) {
+      .preview-wrap { grid-template-columns: 1fr; }
+    }
+    video {
+      width: 100%;
+      min-height: 280px;
+      background: #0b162f;
+      border-radius: 10px;
+    }
+    canvas { display: none; }
+    .preview-box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fbfdff;
+    }
+    .preview-box img {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid #d9e4f6;
+    }
+    .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .actions-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="topbar">
+      <div>
+        <h1>个人主页</h1>
+        <p>在这里维护昵称、查看用户ID，并注册专属签到人脸</p>
+      </div>
+      <div class="actions">
+        <button class="btn-soft" id="btnBack">返回控制台</button>
+        <button class="btn-dark" id="btnLogout">退出</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card span-5">
+        <h2>基础信息</h2>
+        <div class="info-grid">
+          <div class="k">用户ID</div><div class="mono" id="infoUserId">-</div>
+          <div class="k">账号</div><div id="infoUsername">-</div>
+          <div class="k">角色</div><div id="infoRole">-</div>
+          <div class="k">注册时间</div><div id="infoCreateTime">-</div>
+          <div class="k">人脸状态</div><div id="infoFaceState">未注册</div>
+        </div>
+      </article>
+
+      <article class="card span-7">
+        <h2>昵称设置</h2>
+        <div class="line">
+          <label for="displayName">昵称</label>
+          <input id="displayName" maxlength="64" placeholder="请输入昵称" />
+        </div>
+        <button class="btn-primary" id="btnSaveName">保存昵称</button>
+        <div class="hint">提示：签到记录展示昵称；每个用户有唯一用户ID，不会因改昵称变化。</div>
+        <div class="status" id="nameStatus"></div>
+      </article>
+
+      <article class="card span-12">
+        <h2>注册人脸（签到前必需）</h2>
+        <div class="preview-wrap">
+          <div>
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="actions-row">
+              <button class="btn-primary" id="btnOpenCamera">打开摄像头</button>
+              <button class="btn-dark" id="btnCaptureRegister">拍照并注册</button>
+              <label class="btn-soft" style="display:inline-flex;align-items:center;cursor:pointer;">
+                上传图片注册
+                <input id="fileInput" type="file" accept="image/*" style="display:none;" />
+              </label>
+            </div>
+            <div class="hint">将替换你之前注册的人脸，建议使用正脸清晰照片。</div>
+            <div class="status" id="faceStatus"></div>
+          </div>
+          <aside class="preview-box">
+            <div style="font-weight:700;margin-bottom:8px;">当前人脸</div>
+            <img id="facePreview" alt="当前人脸" src="" style="display:none;" />
+            <div id="faceEmpty" class="hint">暂无已注册人脸</div>
+          </aside>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "face_service_token";
+    const token = localStorage.getItem(TOKEN_KEY) || "";
+    let profile = null;
+    let stream = null;
+
+    function $(id) { return document.getElementById(id); }
+
+    function setStatus(id, text, level) {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = text || "";
+      el.className = "status " + (level || "");
+    }
+
+    function toTime(value) {
+      if (!value) return "-";
+      const t = Date.parse(value);
+      if (!Number.isNaN(t)) return new Date(t).toLocaleString();
+      const n = Number(value);
+      if (Number.isFinite(n)) return new Date(n).toLocaleString();
+      return String(value);
+    }
+
+    async function authFetch(path, options = {}) {
+      const opts = Object.assign({}, options);
+      opts.headers = Object.assign({}, opts.headers || {}, { Authorization: "Bearer " + token });
+      const resp = await fetch(path, opts);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.ok === false) {
+        throw new Error(data.detail || data.reason || "请求失败");
+      }
+      return data;
+    }
+
+    function renderProfile() {
+      if (!profile) return;
+      $("infoUserId").textContent = String(profile.user_id || "-");
+      $("infoUsername").textContent = profile.username || "-";
+      $("infoRole").textContent = profile.role || "-";
+      $("infoCreateTime").textContent = toTime(profile.create_time);
+      $("displayName").value = profile.display_name || "";
+      $("infoFaceState").textContent = profile.has_face ? `已注册 (${profile.face_count})` : "未注册";
+      const face = profile.latest_face || null;
+      if (face && face.image_url) {
+        $("facePreview").src = face.image_url;
+        $("facePreview").style.display = "block";
+        $("faceEmpty").style.display = "none";
+      } else {
+        $("facePreview").style.display = "none";
+        $("faceEmpty").style.display = "block";
+      }
+    }
+
+    async function loadProfile() {
+      const data = await authFetch("/auth/profile");
+      profile = data.profile || null;
+      renderProfile();
+    }
+
+    async function saveName() {
+      const name = $("displayName").value.trim();
+      if (!name) {
+        setStatus("nameStatus", "昵称不能为空", "err");
+        return;
+      }
+      setStatus("nameStatus", "正在保存昵称...", "ok");
+      await authFetch("/auth/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: name }),
+      });
+      setStatus("nameStatus", "昵称保存成功", "ok");
+      await loadProfile();
+    }
+
+    async function openCamera() {
+      if (stream) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("当前环境不支持摄像头，请改用系统浏览器或上传图片注册");
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false,
+      });
+      $("video").srcObject = stream;
+    }
+
+    async function captureBlob() {
+      if (!stream) {
+        await openCamera();
+      }
+      const video = $("video");
+      const canvas = $("canvas");
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, width, height);
+      return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    }
+
+    async function registerByBlob(blob, filename) {
+      if (!blob) throw new Error("图像获取失败，请重试");
+      const form = new FormData();
+      form.append("file", blob, filename || "profile.jpg");
+      setStatus("faceStatus", "正在注册人脸...", "ok");
+      const data = await authFetch("/auth/profile/face/register", {
+        method: "POST",
+        body: form,
+      });
+      setStatus("faceStatus", `注册成功，已更新专属人脸（face_id=${data.face_id}）`, "ok");
+      await loadProfile();
+    }
+
+    $("btnBack").addEventListener("click", () => {
+      window.location.href = "/app/dashboard";
+    });
+
+    $("btnLogout").addEventListener("click", async () => {
+      try {
+        await authFetch("/auth/logout", { method: "POST" });
+      } catch (_) {}
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = "/app/login";
+    });
+
+    $("btnSaveName").addEventListener("click", async () => {
+      try {
+        await saveName();
+      } catch (err) {
+        setStatus("nameStatus", err.message || String(err), "err");
+      }
+    });
+
+    $("btnOpenCamera").addEventListener("click", async () => {
+      try {
+        await openCamera();
+        setStatus("faceStatus", "摄像头已就绪，可以拍照注册", "ok");
+      } catch (err) {
+        setStatus("faceStatus", err.message || String(err), "err");
+      }
+    });
+
+    $("btnCaptureRegister").addEventListener("click", async () => {
+      try {
+        const blob = await captureBlob();
+        await registerByBlob(blob, "profile_camera.jpg");
+      } catch (err) {
+        setStatus("faceStatus", err.message || String(err), "err");
+      }
+    });
+
+    $("fileInput").addEventListener("change", async (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      try {
+        await registerByBlob(file, file.name || "profile_upload.jpg");
+      } catch (err) {
+        setStatus("faceStatus", err.message || String(err), "err");
+      } finally {
+        ev.target.value = "";
+      }
+    });
+
+    async function init() {
+      if (!token) {
+        window.location.href = "/app/login";
+        return;
+      }
+      try {
+        await loadProfile();
       } catch (err) {
         localStorage.removeItem(TOKEN_KEY);
         alert(err.message || String(err));
@@ -1050,6 +1482,9 @@ async def scan_checkin_page(token: str) -> str:
 
     async function openCamera() {{
       if (stream) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
+        throw new Error("当前环境不支持摄像头，请使用系统浏览器打开，或部署 HTTPS 域名后再试");
+      }}
       stream = await navigator.mediaDevices.getUserMedia({{
         video: {{ facingMode: "user" }},
         audio: false

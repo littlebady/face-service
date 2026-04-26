@@ -365,10 +365,45 @@ async def submit_public_checkin(
             return {"ok": False, "status": "face_not_matched", "reason": reason, "face_detect": face_detect}
 
         best = results[0]
-        person_name = str(best["person_name"])
+        matched_user_id = best.get("user_id")
+        if matched_user_id is None:
+            reason = "该人脸尚未绑定用户，请先在个人主页注册人脸后再签到"
+            db.add_attendance_record(
+                session_id=int(session["session_id"]),
+                status="profile_face_required",
+                reason=reason,
+                person_name=best.get("person_name"),
+                matched_face_id=best.get("face_id"),
+                similarity=best.get("similarity"),
+                capture_image_path=capture_path,
+                lat=lat,
+                lng=lng,
+                distance_m=distance_m,
+            )
+            return {"ok": False, "status": "profile_face_required", "reason": reason}
+
+        matched_user = db.get_user_by_id(user_id=int(matched_user_id))
+        if not matched_user or not bool(matched_user.get("is_active")):
+            reason = "匹配到的人脸对应用户不可用，请联系管理员"
+            db.add_attendance_record(
+                session_id=int(session["session_id"]),
+                status="user_unavailable",
+                reason=reason,
+                person_name=best.get("person_name"),
+                matched_face_id=best.get("face_id"),
+                matched_user_id=int(matched_user_id),
+                similarity=best.get("similarity"),
+                capture_image_path=capture_path,
+                lat=lat,
+                lng=lng,
+                distance_m=distance_m,
+            )
+            return {"ok": False, "status": "user_unavailable", "reason": reason}
+
+        person_name = str(matched_user.get("display_name") or matched_user.get("username") or best["person_name"])
         if bool(session.get("checkin_once")) and db.has_attendance_success_record(
             session_id=int(session["session_id"]),
-            person_name=person_name,
+            matched_user_id=int(matched_user_id),
         ):
             reason = "你已完成本场签到，无需重复提交"
             db.add_attendance_record(
@@ -377,6 +412,7 @@ async def submit_public_checkin(
                 reason=reason,
                 person_name=person_name,
                 matched_face_id=best.get("face_id"),
+                matched_user_id=int(matched_user_id),
                 similarity=best.get("similarity"),
                 capture_image_path=capture_path,
                 lat=lat,
@@ -396,6 +432,7 @@ async def submit_public_checkin(
             reason="签到成功",
             person_name=person_name,
             matched_face_id=best.get("face_id"),
+            matched_user_id=int(matched_user_id),
             similarity=best.get("similarity"),
             capture_image_path=capture_path,
             lat=lat,
@@ -423,6 +460,7 @@ async def submit_public_checkin(
             "status": "success",
             "record_id": record_id,
             "person_name": person_name,
+            "matched_user_id": int(matched_user_id),
             "similarity": best.get("similarity"),
             "matched_face_id": best.get("face_id"),
             "capture_image_url": to_media_url(str(capture_path), settings.media_root),

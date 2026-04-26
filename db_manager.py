@@ -135,6 +135,7 @@ class FaceDB:
                     person_name TEXT NOT NULL,
                     embedding BLOB NOT NULL,
                     image_path TEXT NOT NULL,
+                    user_id INTEGER,
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
                 """
@@ -233,6 +234,7 @@ class FaceDB:
                     session_id INTEGER NOT NULL,
                     person_name TEXT,
                     matched_face_id INTEGER,
+                    matched_user_id INTEGER,
                     similarity REAL,
                     status TEXT NOT NULL,
                     reason TEXT,
@@ -256,8 +258,24 @@ class FaceDB:
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_attendance_records_session ON attendance_records(session_id, create_time DESC)"
             )
+            self._run_schema_migrations(conn)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_faces_user_id ON faces(user_id)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_attendance_records_user ON attendance_records(matched_user_id, create_time DESC)"
+            )
             conn.commit()
             self._ensure_default_teacher_and_course(conn)
+
+    def _run_schema_migrations(self, conn: sqlite3.Connection) -> None:
+        face_columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(faces)").fetchall()}
+        if "user_id" not in face_columns:
+            conn.execute("ALTER TABLE faces ADD COLUMN user_id INTEGER")
+
+        attendance_columns = {
+            str(row["name"]) for row in conn.execute("PRAGMA table_info(attendance_records)").fetchall()
+        }
+        if "matched_user_id" not in attendance_columns:
+            conn.execute("ALTER TABLE attendance_records ADD COLUMN matched_user_id INTEGER")
 
     def _ensure_default_teacher_and_course(self, conn: sqlite3.Connection) -> None:
         teacher_row = conn.execute(
@@ -438,7 +456,7 @@ class FaceDB:
     def _load_faces_for_search(self) -> List[sqlite3.Row]:
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT id, person_name, embedding, image_path, create_time FROM faces"
+                "SELECT id, person_name, embedding, image_path, user_id, create_time FROM faces"
             ).fetchall()
         return rows
 
@@ -450,6 +468,7 @@ class FaceDB:
                 "face_id": int(row["id"]),
                 "person_name": str(row["person_name"]),
                 "image_path": row["image_path"],
+                "user_id": row["user_id"],
                 "create_time": row["create_time"],
             }
             for row in rows
@@ -466,22 +485,36 @@ class FaceDB:
         }
         self._vector_index.rebuild(self._embedding_cache.items())
 
-    def add_face(self, person_name: str, image_path: Union[str, Path]) -> int:
+    def add_face(
+        self,
+        person_name: str,
+        image_path: Union[str, Path],
+        *,
+        user_id: Optional[int] = None,
+    ) -> int:
         resolved_path = Path(image_path).resolve()
         embedding = self._extract_embedding_from_image(resolved_path)
         return self.add_face_embedding(
             person_name=person_name,
             embedding=embedding,
             image_path=resolved_path,
+            user_id=user_id,
         )
 
-    def add_face_with_analysis(self, person_name: str, image_path: Union[str, Path]) -> Dict[str, Any]:
+    def add_face_with_analysis(
+        self,
+        person_name: str,
+        image_path: Union[str, Path],
+        *,
+        user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         resolved_path = Path(image_path).resolve()
         analyzed = self._analyze_image_face(resolved_path)
         face_id = self.add_face_embedding(
             person_name=person_name,
             embedding=np.asarray(analyzed["embedding"], dtype=np.float32),
             image_path=resolved_path,
+            user_id=user_id,
         )
         return {"face_id": face_id, "face_detect": dict(analyzed["face_detect"])}
 
@@ -491,6 +524,7 @@ class FaceDB:
         person_name: str,
         embedding: np.ndarray,
         image_path: Union[str, Path],
+        user_id: Optional[int] = None,
     ) -> int:
         if not person_name.strip():
             raise ValueError("person_name 不能为空")
@@ -504,8 +538,8 @@ class FaceDB:
         with self._connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO faces (person_name, embedding, image_path) VALUES (?, ?, ?)",
-                (person_name.strip(), embedding_np.tobytes(), store_path),
+                "INSERT INTO faces (person_name, embedding, image_path, user_id) VALUES (?, ?, ?, ?)",
+                (person_name.strip(), embedding_np.tobytes(), store_path, int(user_id) if user_id is not None else None),
             )
             conn.commit()
             face_id = int(cursor.lastrowid)
@@ -514,6 +548,7 @@ class FaceDB:
             "face_id": face_id,
             "person_name": person_name.strip(),
             "image_path": store_path,
+            "user_id": int(user_id) if user_id is not None else None,
             "create_time": None,
         }
         self._face_meta_cache[face_id] = meta
@@ -531,7 +566,7 @@ class FaceDB:
         if not records:
             return {"ok": True, "inserted": 0, "face_ids": []}
 
-        prepared: List[Tuple[str, np.ndarray, str]] = []
+        prepared: List[Tuple[str, np.ndarray, str, Optional[int]]] = []
         for item in records:
             person_name = str(item.get("person_name", "")).strip()
             if not person_name:
@@ -542,24 +577,33 @@ class FaceDB:
             if embedding_np.size == 0:
                 raise ValueError("批量写入中存在空 embedding")
             image_path = item.get("image_path") or f"embedded://{person_name}"
-            prepared.append((person_name, embedding_np, self._normalize_store_path(image_path)))
+            user_id = item.get("user_id")
+            prepared.append(
+                (
+                    person_name,
+                    embedding_np,
+                    self._normalize_store_path(image_path),
+                    int(user_id) if user_id is not None else None,
+                )
+            )
 
         face_ids: List[int] = []
         with self._connection() as conn:
             cursor = conn.cursor()
-            for person_name, embedding_np, image_path in prepared:
+            for person_name, embedding_np, image_path, user_id in prepared:
                 cursor.execute(
-                    "INSERT INTO faces (person_name, embedding, image_path) VALUES (?, ?, ?)",
-                    (person_name, embedding_np.tobytes(), image_path),
+                    "INSERT INTO faces (person_name, embedding, image_path, user_id) VALUES (?, ?, ?, ?)",
+                    (person_name, embedding_np.tobytes(), image_path, user_id),
                 )
                 face_ids.append(int(cursor.lastrowid))
             conn.commit()
 
-        for face_id, (person_name, embedding_np, image_path) in zip(face_ids, prepared):
+        for face_id, (person_name, embedding_np, image_path, user_id) in zip(face_ids, prepared):
             self._face_meta_cache[face_id] = {
                 "face_id": face_id,
                 "person_name": person_name,
                 "image_path": image_path,
+                "user_id": user_id,
                 "create_time": None,
             }
             if self._enable_embedding_cache:
@@ -583,7 +627,7 @@ class FaceDB:
 
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT id, person_name, embedding, image_path, create_time FROM faces"
+                "SELECT id, person_name, embedding, image_path, user_id, create_time FROM faces"
             ).fetchall()
 
         candidates: List[Dict[str, Any]] = []
@@ -600,6 +644,7 @@ class FaceDB:
                         "person_name": str(row["person_name"]),
                         "similarity": similarity,
                         "image_path": row["image_path"],
+                        "user_id": row["user_id"],
                         "create_time": row["create_time"],
                     }
                 )
@@ -626,6 +671,7 @@ class FaceDB:
                     "person_name": str(meta["person_name"]),
                     "similarity": float(hit.similarity),
                     "image_path": meta["image_path"],
+                    "user_id": meta.get("user_id"),
                     "create_time": meta.get("create_time"),
                 }
             )
@@ -686,7 +732,7 @@ class FaceDB:
         return {"results": results, "face_detect": dict(analyzed["face_detect"])}
 
     def get_all_faces(self, limit: int = 100) -> List[Dict[str, Any]]:
-        query = "SELECT id, person_name, image_path, create_time FROM faces ORDER BY id DESC LIMIT ?"
+        query = "SELECT id, person_name, image_path, user_id, create_time FROM faces ORDER BY id DESC LIMIT ?"
         with self._connection() as conn:
             rows = conn.execute(query, (limit,)).fetchall()
 
@@ -695,6 +741,7 @@ class FaceDB:
                 "face_id": int(row["id"]),
                 "person_name": row["person_name"],
                 "image_path": row["image_path"],
+                "user_id": row["user_id"],
                 "create_time": row["create_time"],
             }
             for row in rows
@@ -846,7 +893,7 @@ class FaceDB:
     def delete_face(self, face_id: int, remove_image: bool = True) -> Dict[str, Any]:
         with self._connection() as conn:
             row = conn.execute(
-                "SELECT id, person_name, image_path FROM faces WHERE id = ?",
+                "SELECT id, person_name, image_path, user_id FROM faces WHERE id = ?",
                 (face_id,),
             ).fetchone()
 
@@ -876,6 +923,7 @@ class FaceDB:
             "face_id": int(row["id"]),
             "person_name": row["person_name"],
             "image_path": image_path,
+            "user_id": row["user_id"],
             "image_deleted": image_deleted,
         }
 
@@ -1048,6 +1096,120 @@ class FaceDB:
             if row is None:
                 raise RuntimeError("创建用户失败")
             return self._serialize_user_row(row)
+
+    def get_user_by_id(self, *, user_id: int) -> Optional[Dict[str, Any]]:
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, username, role, display_name, is_active, create_time
+                FROM users
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (int(user_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._serialize_user_row(row)
+
+    def update_user_display_name(self, *, user_id: int, display_name: str) -> Dict[str, Any]:
+        name_text = str(display_name or "").strip()
+        if not name_text:
+            raise ValueError("display_name 不能为空")
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE users
+                SET display_name = ?
+                WHERE id = ?
+                """,
+                (name_text, int(user_id)),
+            )
+            conn.commit()
+            if cursor.rowcount <= 0:
+                raise ValueError("用户不存在")
+            row = conn.execute(
+                """
+                SELECT id, username, role, display_name, is_active, create_time
+                FROM users
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (int(user_id),),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("更新用户昵称失败")
+        return self._serialize_user_row(row)
+
+    def count_user_faces(self, *, user_id: int) -> int:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM faces WHERE user_id = ?",
+                (int(user_id),),
+            ).fetchone()
+        return int(row["cnt"]) if row else 0
+
+    def list_user_faces(self, *, user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, person_name, image_path, user_id, create_time
+                FROM faces
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (int(user_id), max(1, int(limit))),
+            ).fetchall()
+        return [
+            {
+                "face_id": int(row["id"]),
+                "person_name": row["person_name"],
+                "image_path": row["image_path"],
+                "user_id": row["user_id"],
+                "create_time": row["create_time"],
+            }
+            for row in rows
+        ]
+
+    def delete_faces_by_user(self, *, user_id: int, remove_image: bool = True) -> Dict[str, Any]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT id, image_path FROM faces WHERE user_id = ?",
+                (int(user_id),),
+            ).fetchall()
+            if rows:
+                conn.execute("DELETE FROM faces WHERE user_id = ?", (int(user_id),))
+                conn.commit()
+
+        face_ids = [int(row["id"]) for row in rows]
+        for face_id in face_ids:
+            self._face_meta_cache.pop(face_id, None)
+            if self._enable_embedding_cache:
+                self._embedding_cache.pop(face_id, None)
+                self._vector_index.delete(face_id)
+
+        deleted_images = 0
+        if remove_image:
+            for row in rows:
+                image_path = str(row["image_path"] or "")
+                if not image_path or image_path.startswith("embedded://"):
+                    continue
+                image_file = Path(image_path)
+                if not image_file.exists():
+                    continue
+                try:
+                    image_file.unlink(missing_ok=True)
+                    deleted_images += 1
+                except Exception:
+                    continue
+
+        return {
+            "user_id": int(user_id),
+            "deleted_faces": len(face_ids),
+            "deleted_images": deleted_images,
+        }
 
     def verify_user_credentials(
         self,
@@ -1447,21 +1609,36 @@ class FaceDB:
                 return None
         return self.get_attendance_session_by_id(session_id=session_id, teacher_user_id=teacher_user_id)
 
-    def has_attendance_success_record(self, *, session_id: int, person_name: str) -> bool:
-        name_text = str(person_name or "").strip()
-        if not name_text:
-            return False
-        with self._connection() as conn:
-            row = conn.execute(
-                """
+    def has_attendance_success_record(
+        self,
+        *,
+        session_id: int,
+        person_name: Optional[str] = None,
+        matched_user_id: Optional[int] = None,
+    ) -> bool:
+        if matched_user_id is None:
+            name_text = str(person_name or "").strip()
+            if not name_text:
+                return False
+            query = """
                 SELECT id
                 FROM attendance_records
                 WHERE session_id = ? AND person_name = ? AND status = 'success'
                 ORDER BY id DESC
                 LIMIT 1
-                """,
-                (int(session_id), name_text),
-            ).fetchone()
+            """
+            params: Tuple[Any, ...] = (int(session_id), name_text)
+        else:
+            query = """
+                SELECT id
+                FROM attendance_records
+                WHERE session_id = ? AND matched_user_id = ? AND status = 'success'
+                ORDER BY id DESC
+                LIMIT 1
+            """
+            params = (int(session_id), int(matched_user_id))
+        with self._connection() as conn:
+            row = conn.execute(query, params).fetchone()
         return row is not None
 
     def add_attendance_record(
@@ -1472,6 +1649,7 @@ class FaceDB:
         reason: Optional[str] = None,
         person_name: Optional[str] = None,
         matched_face_id: Optional[int] = None,
+        matched_user_id: Optional[int] = None,
         similarity: Optional[float] = None,
         capture_image_path: Optional[Union[str, Path]] = None,
         lat: Optional[float] = None,
@@ -1483,14 +1661,15 @@ class FaceDB:
             cursor.execute(
                 """
                 INSERT INTO attendance_records (
-                    session_id, person_name, matched_face_id, similarity,
+                    session_id, person_name, matched_face_id, matched_user_id, similarity,
                     status, reason, capture_image_path, lat, lng, distance_m
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     int(session_id),
                     person_name,
                     matched_face_id,
+                    int(matched_user_id) if matched_user_id is not None else None,
                     similarity,
                     str(status or "").strip() or "unknown",
                     reason,
@@ -1508,7 +1687,7 @@ class FaceDB:
             rows = conn.execute(
                 """
                 SELECT
-                    id, session_id, person_name, matched_face_id, similarity,
+                    id, session_id, person_name, matched_face_id, matched_user_id, similarity,
                     status, reason, capture_image_path, lat, lng, distance_m, create_time
                 FROM attendance_records
                 WHERE session_id = ?
@@ -1523,6 +1702,7 @@ class FaceDB:
                 "session_id": int(row["session_id"]),
                 "person_name": row["person_name"],
                 "matched_face_id": row["matched_face_id"],
+                "matched_user_id": row["matched_user_id"],
                 "similarity": row["similarity"],
                 "status": row["status"],
                 "reason": row["reason"],
@@ -1548,9 +1728,12 @@ class FaceDB:
             ).fetchall()
             unique_success = conn.execute(
                 """
-                SELECT COUNT(DISTINCT person_name) AS cnt
+                SELECT COUNT(DISTINCT COALESCE(CAST(matched_user_id AS TEXT), person_name)) AS cnt
                 FROM attendance_records
-                WHERE session_id = ? AND status = 'success' AND person_name IS NOT NULL AND person_name != ''
+                WHERE session_id = ?
+                  AND status = 'success'
+                  AND COALESCE(CAST(matched_user_id AS TEXT), person_name) IS NOT NULL
+                  AND COALESCE(CAST(matched_user_id AS TEXT), person_name) != ''
                 """,
                 (int(session_id),),
             ).fetchone()
