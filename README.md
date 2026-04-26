@@ -11,6 +11,11 @@ Face recognition and geo-fence check-in service based on FastAPI + InsightFace.
 - Liveness/anti-spoof related service modules
 - Excel export support for check-in data
 - REST API with web pages and static assets
+- Universal sign-in workflow:
+  - Any user can register/login
+  - Any logged-in user can publish sign-in sessions
+  - Participants scan QR code to complete sign-in
+  - Publisher can view session records and statistics
 
 ## Project Structure
 
@@ -26,8 +31,8 @@ Face recognition and geo-fence check-in service based on FastAPI + InsightFace.
 |-- checkinexcel/             # Java excel-related submodule
 |-- api.py                    # FastAPI entrypoint
 |-- requirements*.txt         # dependency groups
-|-- start_all.ps1/.bat        # local startup scripts
-`-- stop_all.ps1/.bat         # local stop scripts
+|-- start_all.ps1/.bat/.sh    # local startup scripts (Windows/Linux)
+`-- stop_all.ps1/.bat/.sh     # local stop scripts (Windows/Linux)
 ```
 
 ## Quick Start
@@ -35,7 +40,7 @@ Face recognition and geo-fence check-in service based on FastAPI + InsightFace.
 ### 1. Environment
 
 - Python 3.10+ recommended
-- Windows PowerShell (scripts provided)
+- Windows PowerShell or Linux Bash
 
 ### 2. Install dependencies
 
@@ -67,16 +72,37 @@ $env:FACE_SERVICE_ANTISPOOF_MODEL_PATH = "D:\path\to\anti_spoof.onnx"
 
 Use the script-first workflow:
 
+Windows:
+
 1. Double-click `start_all.bat` in project root (or run `.\start_all.bat`).
 2. Wait a few seconds for startup.
-3. Open status file `.run/services.json` (note: file name is `services.json`).
+3. Open status file `.run/services.json`.
 4. Use URLs from that file:
    - `home_url`
    - `checkin_url`
    - `analysis_url`
    - `docs_url`
 
+Linux:
+
+1. Ensure scripts are executable:
+   - `chmod +x start_all.sh stop_all.sh`
+2. Start service:
+   - `./start_all.sh`
+3. Wait a few seconds for startup.
+4. Open status file `.run/services.json`.
+5. Use URLs from that file:
+   - `home_url`
+   - `checkin_url`
+   - `analysis_url`
+   - `docs_url`
+
 The startup script auto-selects an available port (default range `8000-8010`), so check `.run/services.json` first.
+
+You can also pass public base URL explicitly (for QR links):
+
+- Windows: `start_all.bat http://<server-ip>`
+- Linux: `./start_all.sh --public-base-url http://<server-ip>`
 
 Optional manual mode (debug only):
 
@@ -87,7 +113,19 @@ uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 ### 5. Access
 
 - Prefer URLs from `.run/services.json` after script startup.
-- Related pages are provided by `app/routers/pages.py`.
+- Default root `/` now redirects to `/app/login`.
+- New universal check-in console:
+  - Login/Register: `/app/login`
+  - Dashboard (publish/view): `/app/dashboard`
+  - QR scan page pattern: `/s/{token}`
+  - Default demo account: `teacher / teacher123`
+- Legacy page is still available at `/checkin-ui`.
+- If QR links are opened by phones on LAN/internet, set:
+  - `FACE_SERVICE_PUBLIC_BASE_URL=http://<server-ip>:<port>`
+  - Then restart service and re-publish the session so QR uses the reachable address (not localhost).
+- Stop service:
+  - Windows: `.\stop_all.bat` or `.\stop_all.ps1`
+  - Linux: `./stop_all.sh`
 
 ### 6. Strict liveness flow
 

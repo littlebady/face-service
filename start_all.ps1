@@ -8,7 +8,9 @@ param(
     [int]$StartupTimeoutSeconds = 20,
     [switch]$EnableExternalExcel = $false,
     [switch]$WaitForReady = $false,
-    [switch]$EnableReload = $false
+    [switch]$EnableReload = $false,
+    [string]$PublicBaseUrl = "",
+    [switch]$DisableAutoPublicBase = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -107,6 +109,87 @@ function Test-PortListeningByPid {
     return $null -ne $lines
 }
 
+function Get-PreferredLocalIPv4 {
+    $candidates = @()
+    try {
+        $candidates = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object {
+                $_.IPAddress -and
+                $_.IPAddress -notlike "127.*" -and
+                $_.IPAddress -notlike "169.254.*"
+            } |
+            Select-Object -ExpandProperty IPAddress -Unique
+    }
+    catch {
+        $candidates = @()
+    }
+
+    if (-not $candidates -or $candidates.Count -eq 0) {
+        try {
+            $hostEntry = [System.Net.Dns]::GetHostEntry([System.Net.Dns]::GetHostName())
+            foreach ($addr in $hostEntry.AddressList) {
+                if ($addr.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+                    continue
+                }
+                $ip = $addr.IPAddressToString
+                if ($ip -like "127.*" -or $ip -like "169.254.*") {
+                    continue
+                }
+                $candidates += $ip
+            }
+            $candidates = $candidates | Select-Object -Unique
+        }
+        catch {
+            $candidates = @()
+        }
+    }
+
+    foreach ($ip in $candidates) {
+        if ($ip -like "192.168.*" -or $ip -like "10.*") {
+            return $ip
+        }
+        if ($ip -match "^172\.(\d+)\.") {
+            $second = [int]$Matches[1]
+            if ($second -ge 16 -and $second -le 31) {
+                return $ip
+            }
+        }
+    }
+    if ($candidates.Count -gt 0) {
+        return [string]$candidates[0]
+    }
+    return $null
+}
+
+function Resolve-PublicBaseUrlForPort {
+    param(
+        [string]$Base,
+        [int]$Port
+    )
+    if ([string]::IsNullOrWhiteSpace($Base)) {
+        return ""
+    }
+    $trim = $Base.Trim().TrimEnd("/")
+    if ($trim -notmatch "^[A-Za-z][A-Za-z0-9+\-.]*://") {
+        $trim = "http://$trim"
+    }
+    try {
+        $uri = [Uri]$trim
+        $builder = [UriBuilder]::new($uri)
+        $hasExplicitPort = $trim -match ":[0-9]+($|/)"
+        if (-not $hasExplicitPort) {
+            $builder.Port = [int]$Port
+        }
+        $builder.Path = ""
+        $builder.Query = ""
+        $builder.Fragment = ""
+        return $builder.Uri.GetLeftPart([System.UriPartial]::Authority).TrimEnd("/")
+    }
+    catch {
+        return ""
+    }
+}
+
 Write-TraceStep "Script start."
 
 $PythonExe = Normalize-PythonExe -Value $PythonExe
@@ -133,6 +216,29 @@ Write-TraceStep "Python command check passed."
 $hasMaven = Test-CommandAvailable -CommandName $MavenExe
 $hasJava = Test-CommandAvailable -CommandName $JavaExe
 Write-TraceStep "Command checks done. hasMaven=$hasMaven hasJava=$hasJava"
+
+$PublicBaseSeed = ""
+if (-not [string]::IsNullOrWhiteSpace($PublicBaseUrl)) {
+    $PublicBaseSeed = $PublicBaseUrl.Trim()
+    Write-TraceStep "Public base provided by parameter: $PublicBaseSeed"
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:FACE_SERVICE_PUBLIC_BASE_URL)) {
+    $PublicBaseSeed = $env:FACE_SERVICE_PUBLIC_BASE_URL.Trim()
+    Write-TraceStep "Public base provided by env FACE_SERVICE_PUBLIC_BASE_URL: $PublicBaseSeed"
+}
+elseif (-not $DisableAutoPublicBase) {
+    $lanIp = Get-PreferredLocalIPv4
+    if (-not [string]::IsNullOrWhiteSpace($lanIp)) {
+        $PublicBaseSeed = "http://$lanIp"
+        Write-TraceStep "Auto-detected LAN IP for public links: $lanIp"
+    }
+    else {
+        Write-TraceStep "LAN IP auto-detection failed. Will fallback to localhost links."
+    }
+}
+else {
+    Write-TraceStep "Public base auto-detection disabled."
+}
 
 $targetDir = Join-Path $RootDir "checkinexcel\target"
 $jarFile = Get-ChildItem -LiteralPath $targetDir -Filter "*.jar" -File -ErrorAction SilentlyContinue |
@@ -184,6 +290,8 @@ $SelectedPort = $null
 $FastApiOut = $null
 $FastApiErr = $null
 $fastApiProc = $null
+$SelectedPublicBaseUrl = ""
+$OldPublicBaseEnv = $env:FACE_SERVICE_PUBLIC_BASE_URL
 
 for ($candidate = $InitialPort; $candidate -le $MaxPort; $candidate++) {
     $candidateOut = Join-Path $LogDir ("fastapi." + $RunId + ".p" + $candidate + ".out.log")
@@ -197,6 +305,17 @@ for ($candidate = $InitialPort; $candidate -le $MaxPort; $candidate++) {
         $fastApiArgs += "--reload"
     }
     Write-TraceStep ("FastAPI start attempt on port " + $candidate + " args: " + ($fastApiArgs -join " "))
+
+    $candidatePublicBase = Resolve-PublicBaseUrlForPort -Base $PublicBaseSeed -Port $candidate
+    if (-not [string]::IsNullOrWhiteSpace($candidatePublicBase)) {
+        $env:FACE_SERVICE_PUBLIC_BASE_URL = $candidatePublicBase
+        Write-TraceStep "Set FACE_SERVICE_PUBLIC_BASE_URL=$candidatePublicBase for this start attempt."
+    }
+    else {
+        if (Test-Path Env:FACE_SERVICE_PUBLIC_BASE_URL) {
+            Remove-Item Env:FACE_SERVICE_PUBLIC_BASE_URL -ErrorAction SilentlyContinue
+        }
+    }
 
     $probeProc = Start-Process `
         -FilePath $PythonExe `
@@ -230,7 +349,17 @@ for ($candidate = $InitialPort; $candidate -le $MaxPort; $candidate++) {
     $FastApiOut = $candidateOut
     $FastApiErr = $candidateErr
     $fastApiProc = $probeProc
+    $SelectedPublicBaseUrl = $candidatePublicBase
     break
+}
+
+if (-not [string]::IsNullOrWhiteSpace($OldPublicBaseEnv)) {
+    $env:FACE_SERVICE_PUBLIC_BASE_URL = $OldPublicBaseEnv
+}
+else {
+    if (Test-Path Env:FACE_SERVICE_PUBLIC_BASE_URL) {
+        Remove-Item Env:FACE_SERVICE_PUBLIC_BASE_URL -ErrorAction SilentlyContinue
+    }
 }
 
 if (-not $fastApiProc) {
@@ -289,14 +418,15 @@ if ($excelStartMode -ne "builtin") {
 Write-TraceStep "Excel mode init complete. mode=$excelStartMode"
 
 $excelApiUrl = "http://localhost:8000/api/excel/generate"
-$baseUrl = "http://localhost:$SelectedPort"
-$homeUrl = "$baseUrl/"
-$checkinUrl = "$baseUrl/checkin-ui"
-$analysisUrl = "$baseUrl/analysis-ui"
-$docsUrl = "$baseUrl/docs"
+$localBaseUrl = "http://localhost:$SelectedPort"
+$publicBaseUrl = if (-not [string]::IsNullOrWhiteSpace($SelectedPublicBaseUrl)) { $SelectedPublicBaseUrl } else { $localBaseUrl }
+$homeUrl = "$publicBaseUrl/"
+$checkinUrl = "$publicBaseUrl/checkin-ui"
+$analysisUrl = "$publicBaseUrl/analysis-ui"
+$docsUrl = "$publicBaseUrl/docs"
 
 if ($excelStartMode -eq "builtin") {
-    $excelApiUrl = "$baseUrl/api/excel/generate"
+    $excelApiUrl = "$publicBaseUrl/api/excel/generate"
 }
 if ($excelStartMode -ne "builtin") {
     $excelApiUrl = "http://localhost:8080/api/excel/generate"
@@ -309,6 +439,8 @@ $status = [ordered]@{
     excel_pid       = if ($excelProc) { $excelProc.Id } else { $null }
     excel_mode      = $excelStartMode
     port            = $SelectedPort
+    local_base_url  = $localBaseUrl
+    public_base_url = $publicBaseUrl
     home_url        = $homeUrl
     checkin_url     = $checkinUrl
     analysis_url    = $analysisUrl
@@ -326,7 +458,7 @@ Write-TraceStep "Status file written: $PidFile"
 Write-Host ""
 Write-Host "Services started:"
 Write-Host "Python: $PythonExe"
-Write-Host "1) FastAPI (PID=$($fastApiProc.Id)): $baseUrl"
+Write-Host "1) FastAPI (PID=$($fastApiProc.Id)): $localBaseUrl"
 if ($excelStartMode -eq "builtin") {
     Write-Host "2) Excel API mode: builtin (served by FastAPI on $excelApiUrl)"
 }
@@ -334,6 +466,7 @@ else {
     Write-Host "2) checkinexcel (PID=$($excelProc.Id)): http://localhost:8080"
 }
 Write-Host ""
+Write-Host "Public Base: $publicBaseUrl"
 Write-Host "Home: $homeUrl"
 Write-Host "Stop: .\stop_all.ps1"
 Write-Host "Logs: $LogDir"

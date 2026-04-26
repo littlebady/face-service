@@ -4,8 +4,12 @@ from collections import OrderedDict
 from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+import base64
+import hashlib
 import math
+import secrets
 import sqlite3
+import time
 
 import cv2
 import numpy as np
@@ -23,6 +27,41 @@ def _read_image(path: Path) -> Optional[np.ndarray]:
     if raw.size == 0:
         return None
     return cv2.imdecode(raw, cv2.IMREAD_COLOR)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _password_hash(password: str, *, iterations: int = 260_000) -> str:
+    text = str(password or "")
+    if not text:
+        raise ValueError("password 不能为空")
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", text.encode("utf-8"), salt, iterations)
+    salt_b64 = base64.urlsafe_b64encode(salt).decode("ascii")
+    digest_b64 = base64.urlsafe_b64encode(digest).decode("ascii")
+    return f"pbkdf2_sha256${iterations}${salt_b64}${digest_b64}"
+
+
+def _password_verify(password: str, encoded: str) -> bool:
+    try:
+        algorithm, iterations_text, salt_b64, digest_b64 = str(encoded or "").split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = max(1, int(iterations_text))
+        salt = base64.urlsafe_b64decode(salt_b64.encode("ascii"))
+        expected = base64.urlsafe_b64decode(digest_b64.encode("ascii"))
+    except Exception:
+        return False
+
+    candidate = hashlib.pbkdf2_hmac(
+        "sha256",
+        str(password or "").encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return secrets.compare_digest(candidate, expected)
 
 
 class FaceDB:
@@ -125,7 +164,138 @@ class FaceDB:
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_checkin_records_create_time ON checkin_records(create_time DESC)"
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    display_name TEXT,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS teacher_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token TEXT NOT NULL UNIQUE,
+                    expires_at_ms INTEGER NOT NULL,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_used_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS courses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_name TEXT NOT NULL,
+                    course_code TEXT NOT NULL UNIQUE,
+                    teacher_user_id INTEGER NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attendance_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    teacher_user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    start_time_ms INTEGER NOT NULL,
+                    end_time_ms INTEGER NOT NULL,
+                    geofence_enabled INTEGER NOT NULL DEFAULT 0,
+                    center_lat REAL,
+                    center_lng REAL,
+                    radius_m REAL,
+                    face_threshold REAL NOT NULL DEFAULT 0.6,
+                    top_k INTEGER NOT NULL DEFAULT 1,
+                    strict_liveness_required INTEGER NOT NULL DEFAULT 0,
+                    checkin_once INTEGER NOT NULL DEFAULT 1,
+                    qr_token TEXT NOT NULL UNIQUE,
+                    qr_expires_at_ms INTEGER NOT NULL,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    closed_time TIMESTAMP
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attendance_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    person_name TEXT,
+                    matched_face_id INTEGER,
+                    similarity REAL,
+                    status TEXT NOT NULL,
+                    reason TEXT,
+                    capture_image_path TEXT,
+                    lat REAL,
+                    lng REAL,
+                    distance_m REAL,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_teacher_tokens_token ON teacher_tokens(token)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_courses_teacher ON courses(teacher_user_id)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_attendance_sessions_teacher ON attendance_sessions(teacher_user_id, create_time DESC)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_attendance_sessions_qr_token ON attendance_sessions(qr_token)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_attendance_records_session ON attendance_records(session_id, create_time DESC)"
+            )
             conn.commit()
+            self._ensure_default_teacher_and_course(conn)
+
+    def _ensure_default_teacher_and_course(self, conn: sqlite3.Connection) -> None:
+        teacher_row = conn.execute(
+            """
+            SELECT id, username, role
+            FROM users
+            WHERE role IN ('teacher', 'admin')
+            ORDER BY id ASC
+            LIMIT 1
+            """
+        ).fetchone()
+
+        if teacher_row is None:
+            password_hash = _password_hash("teacher123")
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO users (username, password_hash, role, display_name, is_active)
+                VALUES (?, ?, ?, ?, 1)
+                """,
+                ("teacher", password_hash, "teacher", "默认教师"),
+            )
+            teacher_id = int(cursor.lastrowid)
+        else:
+            teacher_id = int(teacher_row["id"])
+
+        course_count_row = conn.execute("SELECT COUNT(*) AS cnt FROM courses").fetchone()
+        course_count = int(course_count_row["cnt"]) if course_count_row else 0
+        if course_count <= 0:
+            conn.execute(
+                """
+                INSERT INTO courses (course_name, course_code, teacher_user_id, is_active)
+                VALUES (?, ?, ?, 1)
+                """,
+                ("演示课程", "DEMO101", teacher_id),
+            )
+
+        conn.commit()
 
     def _ensure_face_app(self) -> Any:
         if self.app is None:
@@ -827,6 +997,570 @@ class FaceDB:
             "radius_m": float(suggested_radius_m),
             "distance_p90_m": percentile_90,
             "latest_time": best_cluster["latest_time"],
+        }
+
+    def _serialize_user_row(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "user_id": int(row["id"]),
+            "username": str(row["username"]),
+            "role": str(row["role"]),
+            "display_name": row["display_name"] or row["username"],
+            "is_active": bool(int(row["is_active"])),
+            "create_time": row["create_time"],
+        }
+
+    def create_user(
+        self,
+        *,
+        username: str,
+        password: str,
+        role: str = "teacher",
+        display_name: Optional[str] = None,
+        is_active: bool = True,
+    ) -> Dict[str, Any]:
+        username_text = str(username or "").strip()
+        if not username_text:
+            raise ValueError("username 不能为空")
+        role_text = str(role or "").strip().lower() or "teacher"
+        if role_text not in {"teacher", "student", "admin", "user"}:
+            raise ValueError("role 非法")
+        password_hash = _password_hash(password)
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO users (username, password_hash, role, display_name, is_active)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    username_text,
+                    password_hash,
+                    role_text,
+                    (display_name or "").strip() or username_text,
+                    1 if is_active else 0,
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT id, username, role, display_name, is_active, create_time FROM users WHERE id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("创建用户失败")
+            return self._serialize_user_row(row)
+
+    def verify_user_credentials(
+        self,
+        *,
+        username: str,
+        password: str,
+        allowed_roles: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        username_text = str(username or "").strip()
+        if not username_text:
+            return None
+
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, username, password_hash, role, display_name, is_active, create_time
+                FROM users
+                WHERE username = ?
+                LIMIT 1
+                """,
+                (username_text,),
+            ).fetchone()
+            if row is None:
+                return None
+            if int(row["is_active"]) != 1:
+                return None
+            if allowed_roles and str(row["role"]).lower() not in {x.lower() for x in allowed_roles}:
+                return None
+            if not _password_verify(password, str(row["password_hash"])):
+                return None
+            return self._serialize_user_row(row)
+
+    def create_teacher_token(self, *, user_id: int, ttl_seconds: int = 8 * 3600) -> Dict[str, Any]:
+        expires_at_ms = _now_ms() + max(60, int(ttl_seconds)) * 1000
+        token = secrets.token_urlsafe(32)
+        with self._connection() as conn:
+            conn.execute(
+                "DELETE FROM teacher_tokens WHERE expires_at_ms < ?",
+                (_now_ms(),),
+            )
+            conn.execute(
+                """
+                INSERT INTO teacher_tokens (user_id, token, expires_at_ms)
+                VALUES (?, ?, ?)
+                """,
+                (int(user_id), token, int(expires_at_ms)),
+            )
+            conn.commit()
+        return {"token": token, "expires_at_ms": int(expires_at_ms)}
+
+    def create_user_token(self, *, user_id: int, ttl_seconds: int = 8 * 3600) -> Dict[str, Any]:
+        return self.create_teacher_token(user_id=user_id, ttl_seconds=ttl_seconds)
+
+    def get_user_by_teacher_token(self, token: str) -> Optional[Dict[str, Any]]:
+        token_text = str(token or "").strip()
+        if not token_text:
+            return None
+
+        now_ms = _now_ms()
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    u.id, u.username, u.role, u.display_name, u.is_active, u.create_time,
+                    t.id AS token_id, t.expires_at_ms
+                FROM teacher_tokens AS t
+                JOIN users AS u ON u.id = t.user_id
+                WHERE t.token = ?
+                LIMIT 1
+                """,
+                (token_text,),
+            ).fetchone()
+            if row is None:
+                return None
+            if int(row["expires_at_ms"]) < now_ms or int(row["is_active"]) != 1:
+                conn.execute("DELETE FROM teacher_tokens WHERE token = ?", (token_text,))
+                conn.commit()
+                return None
+            conn.execute(
+                "UPDATE teacher_tokens SET last_used_time = CURRENT_TIMESTAMP WHERE id = ?",
+                (int(row["token_id"]),),
+            )
+            conn.commit()
+            return self._serialize_user_row(row)
+
+    def get_user_by_token(self, token: str) -> Optional[Dict[str, Any]]:
+        return self.get_user_by_teacher_token(token)
+
+    def revoke_teacher_token(self, token: str) -> bool:
+        token_text = str(token or "").strip()
+        if not token_text:
+            return False
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM teacher_tokens WHERE token = ?", (token_text,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def revoke_user_token(self, token: str) -> bool:
+        return self.revoke_teacher_token(token)
+
+    def ensure_default_course_for_user(self, *, user_id: int) -> Dict[str, Any]:
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id, course_name, course_code, teacher_user_id, is_active, create_time
+                FROM courses
+                WHERE teacher_user_id = ?
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (int(user_id),),
+            ).fetchone()
+            if row is None:
+                cursor = conn.cursor()
+                code = f"SCENE{int(user_id):04d}"
+                cursor.execute(
+                    """
+                    INSERT INTO courses (course_name, course_code, teacher_user_id, is_active)
+                    VALUES (?, ?, ?, 1)
+                    """,
+                    ("默认场景", code, int(user_id)),
+                )
+                conn.commit()
+                row = conn.execute(
+                    """
+                    SELECT id, course_name, course_code, teacher_user_id, is_active, create_time
+                    FROM courses
+                    WHERE id = ?
+                    """,
+                    (int(cursor.lastrowid),),
+                ).fetchone()
+            if row is None:
+                raise RuntimeError("初始化默认场景失败")
+            return {
+                "course_id": int(row["id"]),
+                "course_name": str(row["course_name"]),
+                "course_code": str(row["course_code"]),
+                "teacher_user_id": int(row["teacher_user_id"]),
+                "is_active": bool(int(row["is_active"])),
+                "create_time": row["create_time"],
+            }
+
+    def list_courses_by_teacher(self, *, teacher_user_id: int, include_inactive: bool = False) -> List[Dict[str, Any]]:
+        query = """
+            SELECT id, course_name, course_code, teacher_user_id, is_active, create_time
+            FROM courses
+            WHERE teacher_user_id = ?
+        """
+        params: List[Any] = [int(teacher_user_id)]
+        if not include_inactive:
+            query += " AND is_active = 1"
+        query += " ORDER BY id DESC"
+        with self._connection() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [
+            {
+                "course_id": int(row["id"]),
+                "course_name": str(row["course_name"]),
+                "course_code": str(row["course_code"]),
+                "teacher_user_id": int(row["teacher_user_id"]),
+                "is_active": bool(int(row["is_active"])),
+                "create_time": row["create_time"],
+            }
+            for row in rows
+        ]
+
+    def create_course(
+        self,
+        *,
+        teacher_user_id: int,
+        course_name: str,
+        course_code: str,
+    ) -> Dict[str, Any]:
+        name_text = str(course_name or "").strip()
+        code_text = str(course_code or "").strip().upper()
+        if not name_text:
+            raise ValueError("course_name 不能为空")
+        if not code_text:
+            raise ValueError("course_code 不能为空")
+
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO courses (course_name, course_code, teacher_user_id, is_active)
+                VALUES (?, ?, ?, 1)
+                """,
+                (name_text, code_text, int(teacher_user_id)),
+            )
+            conn.commit()
+            row = conn.execute(
+                """
+                SELECT id, course_name, course_code, teacher_user_id, is_active, create_time
+                FROM courses
+                WHERE id = ?
+                """,
+                (cursor.lastrowid,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("创建课程失败")
+            return {
+                "course_id": int(row["id"]),
+                "course_name": str(row["course_name"]),
+                "course_code": str(row["course_code"]),
+                "teacher_user_id": int(row["teacher_user_id"]),
+                "is_active": bool(int(row["is_active"])),
+                "create_time": row["create_time"],
+            }
+
+    def _serialize_attendance_session_row(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "session_id": int(row["id"]),
+            "course_id": int(row["course_id"]),
+            "teacher_user_id": int(row["teacher_user_id"]),
+            "title": str(row["title"]),
+            "status": str(row["status"]),
+            "start_time_ms": int(row["start_time_ms"]),
+            "end_time_ms": int(row["end_time_ms"]),
+            "geofence_enabled": bool(int(row["geofence_enabled"])),
+            "center_lat": row["center_lat"],
+            "center_lng": row["center_lng"],
+            "radius_m": row["radius_m"],
+            "face_threshold": float(row["face_threshold"]),
+            "top_k": int(row["top_k"]),
+            "strict_liveness_required": bool(int(row["strict_liveness_required"])),
+            "checkin_once": bool(int(row["checkin_once"])),
+            "qr_token": str(row["qr_token"]),
+            "qr_expires_at_ms": int(row["qr_expires_at_ms"]),
+            "create_time": row["create_time"],
+            "closed_time": row["closed_time"],
+            "course_name": row["course_name"] if "course_name" in row.keys() else None,
+            "course_code": row["course_code"] if "course_code" in row.keys() else None,
+        }
+
+    def create_attendance_session(
+        self,
+        *,
+        course_id: int,
+        teacher_user_id: int,
+        title: str,
+        start_time_ms: int,
+        end_time_ms: int,
+        geofence_enabled: bool,
+        center_lat: Optional[float],
+        center_lng: Optional[float],
+        radius_m: Optional[float],
+        face_threshold: float,
+        top_k: int,
+        strict_liveness_required: bool,
+        checkin_once: bool,
+        qr_ttl_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        title_text = str(title or "").strip() or "课堂签到"
+        start_ms = int(start_time_ms)
+        end_ms = int(end_time_ms)
+        if end_ms <= start_ms:
+            raise ValueError("end_time_ms 必须晚于 start_time_ms")
+        qr_expires_at_ms = int(start_ms + (qr_ttl_ms if qr_ttl_ms is not None else (end_ms - start_ms)))
+        qr_expires_at_ms = max(qr_expires_at_ms, end_ms)
+        token = secrets.token_urlsafe(24)
+
+        with self._connection() as conn:
+            course_row = conn.execute(
+                """
+                SELECT id
+                FROM courses
+                WHERE id = ? AND teacher_user_id = ? AND is_active = 1
+                LIMIT 1
+                """,
+                (int(course_id), int(teacher_user_id)),
+            ).fetchone()
+            if course_row is None:
+                raise ValueError("课程不存在或不属于当前教师")
+
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO attendance_sessions (
+                    course_id, teacher_user_id, title, status,
+                    start_time_ms, end_time_ms,
+                    geofence_enabled, center_lat, center_lng, radius_m,
+                    face_threshold, top_k, strict_liveness_required, checkin_once,
+                    qr_token, qr_expires_at_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(course_id),
+                    int(teacher_user_id),
+                    title_text,
+                    "active",
+                    start_ms,
+                    end_ms,
+                    1 if geofence_enabled else 0,
+                    center_lat,
+                    center_lng,
+                    radius_m,
+                    float(face_threshold),
+                    int(top_k),
+                    1 if strict_liveness_required else 0,
+                    1 if checkin_once else 0,
+                    token,
+                    qr_expires_at_ms,
+                ),
+            )
+            session_id = int(cursor.lastrowid)
+            conn.commit()
+            return self.get_attendance_session_by_id(session_id=session_id, teacher_user_id=teacher_user_id) or {}
+
+    def get_attendance_session_by_id(
+        self,
+        *,
+        session_id: int,
+        teacher_user_id: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        query = """
+            SELECT
+                s.*,
+                c.course_name,
+                c.course_code
+            FROM attendance_sessions AS s
+            JOIN courses AS c ON c.id = s.course_id
+            WHERE s.id = ?
+        """
+        params: List[Any] = [int(session_id)]
+        if teacher_user_id is not None:
+            query += " AND s.teacher_user_id = ?"
+            params.append(int(teacher_user_id))
+        query += " LIMIT 1"
+        with self._connection() as conn:
+            row = conn.execute(query, tuple(params)).fetchone()
+        if row is None:
+            return None
+        return self._serialize_attendance_session_row(row)
+
+    def get_attendance_session_by_qr_token(self, *, token: str) -> Optional[Dict[str, Any]]:
+        token_text = str(token or "").strip()
+        if not token_text:
+            return None
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    s.*,
+                    c.course_name,
+                    c.course_code
+                FROM attendance_sessions AS s
+                JOIN courses AS c ON c.id = s.course_id
+                WHERE s.qr_token = ?
+                LIMIT 1
+                """,
+                (token_text,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._serialize_attendance_session_row(row)
+
+    def list_attendance_sessions(
+        self,
+        *,
+        teacher_user_id: int,
+        status: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        query = """
+            SELECT
+                s.*,
+                c.course_name,
+                c.course_code
+            FROM attendance_sessions AS s
+            JOIN courses AS c ON c.id = s.course_id
+            WHERE s.teacher_user_id = ?
+        """
+        params: List[Any] = [int(teacher_user_id)]
+        if status:
+            query += " AND s.status = ?"
+            params.append(str(status).strip())
+        query += " ORDER BY s.id DESC LIMIT ?"
+        params.append(max(1, int(limit)))
+        with self._connection() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [self._serialize_attendance_session_row(row) for row in rows]
+
+    def close_attendance_session(self, *, session_id: int, teacher_user_id: int) -> Optional[Dict[str, Any]]:
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE attendance_sessions
+                SET status = 'closed', closed_time = CURRENT_TIMESTAMP
+                WHERE id = ? AND teacher_user_id = ?
+                """,
+                (int(session_id), int(teacher_user_id)),
+            )
+            conn.commit()
+            if cursor.rowcount <= 0:
+                return None
+        return self.get_attendance_session_by_id(session_id=session_id, teacher_user_id=teacher_user_id)
+
+    def has_attendance_success_record(self, *, session_id: int, person_name: str) -> bool:
+        name_text = str(person_name or "").strip()
+        if not name_text:
+            return False
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id
+                FROM attendance_records
+                WHERE session_id = ? AND person_name = ? AND status = 'success'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (int(session_id), name_text),
+            ).fetchone()
+        return row is not None
+
+    def add_attendance_record(
+        self,
+        *,
+        session_id: int,
+        status: str,
+        reason: Optional[str] = None,
+        person_name: Optional[str] = None,
+        matched_face_id: Optional[int] = None,
+        similarity: Optional[float] = None,
+        capture_image_path: Optional[Union[str, Path]] = None,
+        lat: Optional[float] = None,
+        lng: Optional[float] = None,
+        distance_m: Optional[float] = None,
+    ) -> int:
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO attendance_records (
+                    session_id, person_name, matched_face_id, similarity,
+                    status, reason, capture_image_path, lat, lng, distance_m
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(session_id),
+                    person_name,
+                    matched_face_id,
+                    similarity,
+                    str(status or "").strip() or "unknown",
+                    reason,
+                    str(Path(capture_image_path).resolve()) if capture_image_path else None,
+                    lat,
+                    lng,
+                    distance_m,
+                ),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def list_attendance_records(self, *, session_id: int, limit: int = 500) -> List[Dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    id, session_id, person_name, matched_face_id, similarity,
+                    status, reason, capture_image_path, lat, lng, distance_m, create_time
+                FROM attendance_records
+                WHERE session_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (int(session_id), max(1, int(limit))),
+            ).fetchall()
+        return [
+            {
+                "record_id": int(row["id"]),
+                "session_id": int(row["session_id"]),
+                "person_name": row["person_name"],
+                "matched_face_id": row["matched_face_id"],
+                "similarity": row["similarity"],
+                "status": row["status"],
+                "reason": row["reason"],
+                "capture_image_path": row["capture_image_path"],
+                "lat": row["lat"],
+                "lng": row["lng"],
+                "distance_m": row["distance_m"],
+                "create_time": row["create_time"],
+            }
+            for row in rows
+        ]
+
+    def summarize_attendance_records(self, *, session_id: int) -> Dict[str, Any]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT status, COUNT(*) AS cnt
+                FROM attendance_records
+                WHERE session_id = ?
+                GROUP BY status
+                """,
+                (int(session_id),),
+            ).fetchall()
+            unique_success = conn.execute(
+                """
+                SELECT COUNT(DISTINCT person_name) AS cnt
+                FROM attendance_records
+                WHERE session_id = ? AND status = 'success' AND person_name IS NOT NULL AND person_name != ''
+                """,
+                (int(session_id),),
+            ).fetchone()
+
+        status_counts = {str(row["status"]): int(row["cnt"]) for row in rows}
+        return {
+            "session_id": int(session_id),
+            "total_records": int(sum(status_counts.values())),
+            "status_counts": status_counts,
+            "unique_success_count": int(unique_success["cnt"]) if unique_success else 0,
         }
 
     def close(self) -> None:
