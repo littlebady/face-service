@@ -1630,11 +1630,10 @@ async def scan_checkin_page(token: str) -> str:
         btnLiveness.style.display = "none";
       }} else if (session.strict_liveness_full_actions) {{
         setStatus("sessionStatus", "当前场次要求完整版动作活体，请使用动作版签到页。正在跳转...", "warn");
-        document.getElementById("btnSubmit").disabled = true;
-        btnLiveness.style.display = "none";
-        setTimeout(() => {{
-          window.location.href = "/s/full/" + encodeURIComponent(token);
-        }}, 300);
+        setStatus("sessionStatus", "当前场次要求严格活体动作：请先完成动作挑战，再点击签到提交。", "warn");
+        btnLiveness.style.display = "inline-block";
+        document.getElementById("btnSubmit").disabled = false;
+        updateLivenessHint();
       }} else if (session.strict_liveness_required) {{
         setStatus("sessionStatus", "当前场次已开启严格活体：请先完成活体检测，再点击签到提交。", "warn");
         btnLiveness.style.display = "inline-block";
@@ -1873,4 +1872,4 @@ async def scan_checkin_page(token: str) -> str:
 @router.get("/s/full/{token}", include_in_schema=False)
 async def full_liveness_scan_redirect(token: str) -> RedirectResponse:
     encoded = quote(str(token or "").strip(), safe="")
-    return RedirectResponse(url=f"/checkin-ui?session_token={encoded}", status_code=307)
+    return RedirectResponse(url=f"/s/{encoded}", status_code=307)

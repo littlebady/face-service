@@ -56,8 +56,9 @@ def _student_checkin_url_by_mode(request: Request, token: str, *, strict_full_ac
         base_url = public_base.rstrip("/")
     else:
         base_url = str(request.base_url).rstrip("/")
+    # 严格活体与普通签到使用同一扫码页，仅在页面内提升动作要求。
     if strict_full_actions:
-        return f"{base_url}/s/full/{token}"
+        return f"{base_url}/s/{token}"
     return f"{base_url}/s/{token}"
 
 
