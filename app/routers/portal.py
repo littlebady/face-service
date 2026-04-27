@@ -1542,13 +1542,18 @@ async def scan_checkin_page(token: str) -> str:
     const LIVE_RIGHT_MOUTH_CORNER = 308;
 
     const LIVE_CALIBRATION_FRAMES = 20;
-    const LIVE_STEP_TIMEOUT_MS = 9000;
+    const LIVE_FIRST_STEP_TIMEOUT_MS = 9000;
+    const LIVE_OTHER_STEP_TIMEOUT_MS = 3000;
     const LIVE_TOTAL_TIMEOUT_MS = 65000;
     const LIVE_MIN_TOTAL_MS = 4800;
     const LIVE_NEUTRAL_FRAMES = 5;
     const LIVE_NEUTRAL_YAW_ABS = 0.05;
-    const LIVE_CLOSE_EAR_FACTOR = 0.72;
-    const LIVE_OPEN_EAR_FACTOR = 0.9;
+    const LIVE_CLOSE_EAR_FACTOR = 0.78;
+    const LIVE_OPEN_EAR_FACTOR = 0.85;
+    const LIVE_BLINK_MIN_DEPTH_ABS = 0.016;
+    const LIVE_BLINK_MIN_DEPTH_RATIO = 0.11;
+    const LIVE_BLINK_REBOUND_RATIO = 0.72;
+    const LIVE_BLINK_SINGLE_FRAME_DEPTH_BOOST = 1.32;
     const LIVE_STRICT_FREEZE_FRAMES = 24;
     const LIVE_STRICT_MAX_MISSING_FRAMES = 16;
     const LIVE_STRICT_TURN_MAX_MISSING_FRAMES = 36;
@@ -1562,6 +1567,15 @@ async def scan_checkin_page(token: str) -> str:
     const LIVE_MOVE_CLOSER_GAIN_RATIO = 1.055;
     const LIVE_MOVE_CLOSER_GAIN_ABS = 0.0045;
     const LIVE_MOVE_CLOSER_HOLD_FRAMES = 2;
+    const LIVE_MOUTH_OPEN_FACTOR = 1.35;
+    const LIVE_MOUTH_OPEN_DELTA = 0.018;
+    const LIVE_MOUTH_OPEN_FLOOR = 0.064;
+    const LIVE_MOUTH_CLOSE_FACTOR = 1.12;
+    const LIVE_MOUTH_CLOSE_DELTA = 0.008;
+    const LIVE_MOUTH_CLOSE_FLOOR = 0.05;
+    const LIVE_MOUTH_MIN_PEAK_GAIN_ABS = 0.013;
+    const LIVE_MOUTH_MIN_PEAK_GAIN_RATIO = 0.26;
+    const LIVE_MOUTH_SINGLE_FRAME_GAIN_BOOST = 1.35;
 
     let session = null;
     let stream = null;
@@ -1700,6 +1714,12 @@ async def scan_checkin_page(token: str) -> str:
 
     function isTurnAction(action) {{
       return action === "turn_left" || action === "turn_right";
+    }}
+
+    function currentStepTimeoutMs() {{
+      return livenessState.challengeIndex <= 0
+        ? LIVE_FIRST_STEP_TIMEOUT_MS
+        : LIVE_OTHER_STEP_TIMEOUT_MS;
     }}
 
     function loadScriptOnce(src) {{
@@ -2002,15 +2022,26 @@ async def scan_checkin_page(token: str) -> str:
       const openThreshold = baselineEar * LIVE_OPEN_EAR_FACTOR;
 
       if (actionKey === "blink") {{
+        stepData.maxEar = stepData.maxEar == null ? metrics.ear : Math.max(stepData.maxEar, metrics.ear);
         stepData.minEar = stepData.minEar == null ? metrics.ear : Math.min(stepData.minEar, metrics.ear);
+        const minEar = stepData.minEar == null ? baselineEar : stepData.minEar;
+        const maxEar = stepData.maxEar == null ? baselineEar : stepData.maxEar;
+        const depth = maxEar - minEar;
+        const minDepth = Math.max(LIVE_BLINK_MIN_DEPTH_ABS, baselineEar * LIVE_BLINK_MIN_DEPTH_RATIO);
+        const rebound = metrics.ear - minEar;
+
         if (metrics.ear < closeThreshold) {{
           stepData.closedFrames = (stepData.closedFrames || 0) + 1;
+        }} else if (!stepData.closed) {{
+          stepData.closedFrames = 0;
         }}
-        if ((stepData.closedFrames || 0) >= 2) {{
+
+        if ((stepData.closedFrames || 0) >= 2 || ((stepData.closedFrames || 0) >= 1 && depth > minDepth * LIVE_BLINK_SINGLE_FRAME_DEPTH_BOOST)) {{
           stepData.closed = true;
         }}
-        const depth = baselineEar - (stepData.minEar == null ? baselineEar : stepData.minEar);
-        if (stepData.closed && metrics.ear > openThreshold && depth > Math.max(0.025, baselineEar * 0.16)) {{
+
+        const reopened = metrics.ear > openThreshold || rebound > minDepth * LIVE_BLINK_REBOUND_RATIO;
+        if (stepData.closed && reopened && depth > minDepth) {{
           livenessState.blinkCount += 1;
           livenessState.stepData = {{}};
           return true;
@@ -2075,17 +2106,29 @@ async def scan_checkin_page(token: str) -> str:
         }}
       }} else if (actionKey === "mouth_open") {{
         const baseMouth = livenessState.mouthBaseline > 0 ? livenessState.mouthBaseline : 0.045;
-        const openThresholdMouth = Math.max(baseMouth * 1.45, baseMouth + 0.022, 0.072);
-        const closeThresholdMouth = Math.max(baseMouth * 1.16, baseMouth + 0.01, 0.055);
+        const openThresholdMouth = Math.max(
+          baseMouth * LIVE_MOUTH_OPEN_FACTOR,
+          baseMouth + LIVE_MOUTH_OPEN_DELTA,
+          LIVE_MOUTH_OPEN_FLOOR
+        );
+        const closeThresholdMouth = Math.max(
+          baseMouth * LIVE_MOUTH_CLOSE_FACTOR,
+          baseMouth + LIVE_MOUTH_CLOSE_DELTA,
+          LIVE_MOUTH_CLOSE_FLOOR
+        );
         stepData.peakMouth = stepData.peakMouth == null ? metrics.mouth : Math.max(stepData.peakMouth, metrics.mouth);
         if (metrics.mouth > openThresholdMouth) {{
           stepData.openFrames = (stepData.openFrames || 0) + 1;
         }}
-        if ((stepData.openFrames || 0) >= 2) {{
+        const peakGain = (stepData.peakMouth == null ? baseMouth : stepData.peakMouth) - baseMouth;
+        const minPeakGain = Math.max(LIVE_MOUTH_MIN_PEAK_GAIN_ABS, baseMouth * LIVE_MOUTH_MIN_PEAK_GAIN_RATIO);
+        if (
+          (stepData.openFrames || 0) >= 2
+          || ((stepData.openFrames || 0) >= 1 && peakGain > minPeakGain * LIVE_MOUTH_SINGLE_FRAME_GAIN_BOOST)
+        ) {{
           stepData.opened = true;
         }}
-        const peakGain = (stepData.peakMouth == null ? baseMouth : stepData.peakMouth) - baseMouth;
-        if (stepData.opened && metrics.mouth < closeThresholdMouth && peakGain > Math.max(0.018, baseMouth * 0.35)) {{
+        if (stepData.opened && metrics.mouth < closeThresholdMouth && peakGain > minPeakGain) {{
           livenessState.stepData = {{}};
           return true;
         }}
@@ -2242,7 +2285,8 @@ async def scan_checkin_page(token: str) -> str:
         failLiveness("动作挑战超时，请重新开始");
         return;
       }}
-      if (now - livenessState.stepStartedAt > LIVE_STEP_TIMEOUT_MS) {{
+      const stepTimeoutMs = currentStepTimeoutMs();
+      if (now - livenessState.stepStartedAt > stepTimeoutMs) {{
         failLiveness("当前动作超时，请重新开始");
         return;
       }}
