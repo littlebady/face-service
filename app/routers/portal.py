@@ -1615,6 +1615,8 @@ async def scan_checkin_page(token: str) -> str:
       engineSendErrorCount: 0,
       engineReinitCount: 0,
       engineWarmupFrames: 0,
+      engineLiteMode: false,
+      lastEngineError: "",
       engineReady: false,
       engine: null,
       ticket: "",
@@ -1727,7 +1729,8 @@ async def scan_checkin_page(token: str) -> str:
       }});
       mesh.setOptions({{
         maxNumFaces: 1,
-        refineLandmarks: true,
+        // 兼容模式下关闭 refineLandmarks 可显著降低机型兼容压力
+        refineLandmarks: !livenessState.engineLiteMode,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5,
       }});
@@ -1736,14 +1739,43 @@ async def scan_checkin_page(token: str) -> str:
       livenessState.engineReady = true;
     }}
 
+    function isWechatBrowser() {{
+      try {{
+        return String((navigator && navigator.userAgent) || "").toLowerCase().includes("micromessenger");
+      }} catch (err) {{
+        return false;
+      }}
+    }}
+
+    function hasWebGLSupport() {{
+      try {{
+        const probe = document.createElement("canvas");
+        const gl = probe.getContext("webgl2") || probe.getContext("webgl") || probe.getContext("experimental-webgl");
+        return !!gl;
+      }} catch (err) {{
+        return false;
+      }}
+    }}
+
     function describeLivenessEngineError(err) {{
       const msg = String((err && err.message) || err || "");
       const lower = msg.toLowerCase();
       if (!msg) {{
         return "活体检测引擎运行失败，请刷新后重试";
       }}
+      if (
+        lower.includes("webgl")
+        || lower.includes("contextlost")
+        || lower.includes("gpu")
+        || lower.includes("createcontext")
+        || lower.includes("teximage2d")
+      ) {{
+        const openTip = isWechatBrowser() ? "请点右上角在系统浏览器打开后重试" : "请更换最新版系统浏览器后重试";
+        return "浏览器图形能力不足（WebGL/GPU），活体引擎无法运行，" + openTip;
+      }}
       if (lower.includes("webassembly") || lower.includes("wasm")) {{
-        return "活体引擎加载失败（WebAssembly），请改用系统浏览器或升级浏览器后重试";
+        const openTip = isWechatBrowser() ? "请点右上角在系统浏览器打开后重试" : "请升级浏览器后重试";
+        return "活体引擎加载失败（WebAssembly），" + openTip;
       }}
       if (lower.includes("memory")) {{
         return "活体引擎可用内存不足，请关闭后台应用后重试";
@@ -1751,7 +1783,10 @@ async def scan_checkin_page(token: str) -> str:
       if (lower.includes("network") || lower.includes("fetch")) {{
         return "活体模型资源加载失败，请检查网络后重试";
       }}
-      return "活体检测引擎运行失败，请刷新后重试";
+      const snippet = msg.replace(/\\s+/g, " ").slice(0, 120);
+      return snippet
+        ? ("活体检测引擎运行失败：" + snippet)
+        : "活体检测引擎运行失败，请刷新后重试";
     }}
 
     function resetLivenessMotionState() {{
@@ -1804,6 +1839,7 @@ async def scan_checkin_page(token: str) -> str:
       livenessState.engineSendErrorCount = 0;
       livenessState.engineReinitCount = 0;
       livenessState.engineWarmupFrames = 0;
+      livenessState.lastEngineError = "";
     }}
 
     function liveDistance(a, b) {{
@@ -2252,16 +2288,19 @@ async def scan_checkin_page(token: str) -> str:
       try {{
         await livenessState.engine.send({{ image: video }});
         livenessState.engineSendErrorCount = 0;
+        livenessState.lastEngineError = "";
       }} catch (err) {{
         livenessState.engineWarmupFrames = 0;
         livenessState.engineSendErrorCount += 1;
+        livenessState.lastEngineError = String((err && err.message) || err || "");
+        console.error("[liveness] engine.send failed", err);
         if (livenessState.engineSendErrorCount <= LIVE_ENGINE_SEND_MAX_RETRY) {{
           setStatus(
             "livenessStatus",
             "活体引擎短暂波动，正在自动恢复（" + livenessState.engineSendErrorCount + "/" + LIVE_ENGINE_SEND_MAX_RETRY + "）",
             "warn"
           );
-          await sleep(120 * livenessState.engineSendErrorCount);
+          await sleep(260 * livenessState.engineSendErrorCount);
           if (livenessState.running && tokenValue === livenessLoopToken) {{
             requestAnimationFrame(() => runLivenessLoop(tokenValue));
           }}
@@ -2269,9 +2308,21 @@ async def scan_checkin_page(token: str) -> str:
         }}
         if (livenessState.engineReinitCount < LIVE_ENGINE_REINIT_MAX_RETRY) {{
           livenessState.engineReinitCount += 1;
+          if (!livenessState.engineLiteMode) {{
+            livenessState.engineLiteMode = true;
+            setStatus("livenessStatus", "活体引擎切换到兼容模式，正在重启...", "warn");
+          }} else {{
+            setStatus("livenessStatus", "活体引擎正在重启，请稍候...", "warn");
+          }}
+          try {{
+            if (livenessState.engine && typeof livenessState.engine.close === "function") {{
+              await livenessState.engine.close();
+            }}
+          }} catch (closeErr) {{
+            console.warn("[liveness] engine.close failed", closeErr);
+          }}
           livenessState.engineReady = false;
           livenessState.engine = null;
-          setStatus("livenessStatus", "活体引擎正在重启，请稍候...", "warn");
           try {{
             await ensureLivenessEngine();
             livenessState.engineSendErrorCount = 0;
@@ -2408,15 +2459,50 @@ async def scan_checkin_page(token: str) -> str:
     }}
 
     async function openCamera() {{
-      if (stream) return;
+      if (stream && video.srcObject === stream) {{
+        await waitForVideoReady(1800);
+        return;
+      }}
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
         throw new Error("当前环境不支持摄像头，请使用系统浏览器打开，或部署 HTTPS 域名后再试");
       }}
-      stream = await navigator.mediaDevices.getUserMedia({{
-        video: {{ facingMode: "user" }},
-        audio: false
-      }});
+      const constraints = {{
+        video: {{
+          facingMode: "user",
+          width: {{ ideal: 640, max: 960 }},
+          height: {{ ideal: 480, max: 720 }},
+          frameRate: {{ ideal: 24, max: 30 }},
+        }},
+        audio: false,
+      }};
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
+      try {{
+        await video.play();
+      }} catch (err) {{
+        // 部分内嵌浏览器会拒绝 play Promise，但流已建立，后续仍可继续检测
+      }}
+      await waitForVideoReady(3500);
+    }}
+
+    async function waitForVideoReady(timeoutMs) {{
+      const deadline = Date.now() + Math.max(600, Number(timeoutMs) || 2500);
+      while (Date.now() < deadline) {{
+        if (
+          video.readyState >= 2
+          && (video.videoWidth || 0) > 0
+          && (video.videoHeight || 0) > 0
+        ) {{
+          return;
+        }}
+        await sleep(80);
+      }}
+      throw new Error("摄像头画面未就绪，请重试并确保已授权摄像头");
     }}
 
     function getLocation() {{
@@ -2503,6 +2589,13 @@ async def scan_checkin_page(token: str) -> str:
       }}
       clearLivenessState();
       try {{
+        if (typeof WebAssembly === "undefined") {{
+          throw new Error("当前浏览器不支持 WebAssembly，无法进行严格活体检测");
+        }}
+        if (!hasWebGLSupport()) {{
+          const openTip = isWechatBrowser() ? "请点右上角在系统浏览器打开后重试" : "请使用最新版系统浏览器后重试";
+          throw new Error("当前浏览器不支持 WebGL，无法进行严格活体检测，" + openTip);
+        }}
         await openCamera();
         setStatus("submitStatus", "严格活体检测启动中...", "warn");
         const challenge = await fetchJson("/checkins/liveness/challenge", {{ method: "POST" }});
