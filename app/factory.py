@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import mimetypes
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +13,11 @@ from .core.settings import Settings, ensure_directories, get_settings
 from .routers import admin, attendance, auth, checkins, excel, faces, pages, portal
 from .services.antispoof_service import AntiSpoofEngine
 from .services.liveness_service import LivenessChallengeManager
+
+# 强制补齐关键静态资源 MIME，避免某些系统/代理下 wasm/data 被误判文本类型
+mimetypes.add_type("application/wasm", ".wasm")
+mimetypes.add_type("application/octet-stream", ".data")
+mimetypes.add_type("application/octet-stream", ".binarypb")
 
 
 def _build_face_db(app_settings: Settings, face_db: FaceDB | None) -> FaceDB:

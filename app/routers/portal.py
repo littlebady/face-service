@@ -1530,7 +1530,7 @@ async def scan_checkin_page(token: str) -> str:
 
   <script>
     const token = {token_json};
-    const MEDIAPIPE_VERSION = "20260413_3";
+    const MEDIAPIPE_VERSION = "20260427_1";
     const LIVE_LEFT_EYE = [33, 160, 158, 133, 153, 144];
     const LIVE_RIGHT_EYE = [362, 385, 387, 263, 373, 380];
     const LIVE_LEFT_EYE_CORNER = 33;
@@ -1558,6 +1558,7 @@ async def scan_checkin_page(token: str) -> str:
     const LIVE_ENGINE_WARMUP_FRAMES = 3;
     const LIVE_ENGINE_SEND_MAX_RETRY = 3;
     const LIVE_ENGINE_REINIT_MAX_RETRY = 1;
+    const LIVE_ERROR_STATUS_HOLD_MS = 15000;
 
     let session = null;
     let stream = null;
@@ -1617,6 +1618,7 @@ async def scan_checkin_page(token: str) -> str:
       engineWarmupFrames: 0,
       engineLiteMode: false,
       lastEngineError: "",
+      livenessStatusLockUntil: 0,
       engineReady: false,
       engine: null,
       ticket: "",
@@ -1633,6 +1635,16 @@ async def scan_checkin_page(token: str) -> str:
       const el = document.getElementById(id);
       el.textContent = text || "";
       el.className = "status " + (level || "");
+    }}
+
+    function setLivenessErrorStatus(text, holdMs) {{
+      const ms = Math.max(1500, Number(holdMs) || LIVE_ERROR_STATUS_HOLD_MS);
+      livenessState.livenessStatusLockUntil = Date.now() + ms;
+      setStatus("livenessStatus", text || "活体检测失败，请重试", "err");
+    }}
+
+    function isLivenessStatusLocked() {{
+      return Date.now() < Number(livenessState.livenessStatusLockUntil || 0);
     }}
 
     function setText(id, text) {{
@@ -1747,6 +1759,17 @@ async def scan_checkin_page(token: str) -> str:
       }}
     }}
 
+    function isIOSWebkit() {{
+      try {{
+        const ua = String((navigator && navigator.userAgent) || "").toLowerCase();
+        const isiOS = /iphone|ipad|ipod/.test(ua);
+        const isAppleDesktop = /macintosh/.test(ua) && "ontouchend" in document;
+        return isiOS || isAppleDesktop;
+      }} catch (err) {{
+        return false;
+      }}
+    }}
+
     function hasWebGLSupport() {{
       try {{
         const probe = document.createElement("canvas");
@@ -1760,6 +1783,7 @@ async def scan_checkin_page(token: str) -> str:
     function describeLivenessEngineError(err) {{
       const msg = String((err && err.message) || err || "");
       const lower = msg.toLowerCase();
+      const snippet = msg.replace(/\\s+/g, " ").slice(0, 120);
       if (!msg) {{
         return "活体检测引擎运行失败，请刷新后重试";
       }}
@@ -1775,7 +1799,7 @@ async def scan_checkin_page(token: str) -> str:
       }}
       if (lower.includes("webassembly") || lower.includes("wasm")) {{
         const openTip = isWechatBrowser() ? "请点右上角在系统浏览器打开后重试" : "请升级浏览器后重试";
-        return "活体引擎加载失败（WebAssembly），" + openTip;
+        return "活体引擎加载失败（WebAssembly），" + openTip + (snippet ? ("；详情：" + snippet) : "");
       }}
       if (lower.includes("memory")) {{
         return "活体引擎可用内存不足，请关闭后台应用后重试";
@@ -1783,7 +1807,6 @@ async def scan_checkin_page(token: str) -> str:
       if (lower.includes("network") || lower.includes("fetch")) {{
         return "活体模型资源加载失败，请检查网络后重试";
       }}
-      const snippet = msg.replace(/\\s+/g, " ").slice(0, 120);
       return snippet
         ? ("活体检测引擎运行失败：" + snippet)
         : "活体检测引擎运行失败，请刷新后重试";
@@ -1840,6 +1863,7 @@ async def scan_checkin_page(token: str) -> str:
       livenessState.engineReinitCount = 0;
       livenessState.engineWarmupFrames = 0;
       livenessState.lastEngineError = "";
+      livenessState.livenessStatusLockUntil = 0;
     }}
 
     function liveDistance(a, b) {{
@@ -1965,7 +1989,7 @@ async def scan_checkin_page(token: str) -> str:
       livenessState.passed = false;
       livenessState.failReason = reason || "活体检测失败";
       livenessState.proof = null;
-      setStatus("livenessStatus", livenessState.failReason, "err");
+      setLivenessErrorStatus(livenessState.failReason);
     }}
 
     function handleCurrentChallengeStep(actionKey, metrics) {{
@@ -2400,9 +2424,13 @@ async def scan_checkin_page(token: str) -> str:
       livenessState.keyBlob = null;
       livenessState.challenge = null;
       livenessState.proof = null;
+      livenessState.livenessStatusLockUntil = 0;
     }}
 
     function updateLivenessHint() {{
+      if (isLivenessStatusLocked()) {{
+        return;
+      }}
       if (!session || !session.strict_liveness_required) {{
         setStatus("livenessStatus", "", "");
         return;
@@ -2466,12 +2494,13 @@ async def scan_checkin_page(token: str) -> str:
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
         throw new Error("当前环境不支持摄像头，请使用系统浏览器打开，或部署 HTTPS 域名后再试");
       }}
+      const useLowLoad = isIOSWebkit() || isWechatBrowser();
       const constraints = {{
         video: {{
           facingMode: "user",
-          width: {{ ideal: 640, max: 960 }},
-          height: {{ ideal: 480, max: 720 }},
-          frameRate: {{ ideal: 24, max: 30 }},
+          width: useLowLoad ? {{ ideal: 480, max: 640 }} : {{ ideal: 640, max: 960 }},
+          height: useLowLoad ? {{ ideal: 360, max: 480 }} : {{ ideal: 480, max: 720 }},
+          frameRate: useLowLoad ? {{ ideal: 18, max: 24 }} : {{ ideal: 24, max: 30 }},
         }},
         audio: false,
       }};
@@ -2589,6 +2618,10 @@ async def scan_checkin_page(token: str) -> str:
       }}
       clearLivenessState();
       try {{
+        if (isIOSWebkit()) {{
+          // iOS WebKit 对 FaceMesh 更容易触发 wasm/gpu 限制，默认走兼容模式
+          livenessState.engineLiteMode = true;
+        }}
         if (typeof WebAssembly === "undefined") {{
           throw new Error("当前浏览器不支持 WebAssembly，无法进行严格活体检测");
         }}
@@ -2691,7 +2724,7 @@ async def scan_checkin_page(token: str) -> str:
         setStatus("submitStatus", "活体通过，请点击“拍照并签到”提交", "ok");
       }} catch (err) {{
         clearLivenessState();
-        setStatus("livenessStatus", err.message || String(err), "err");
+        setLivenessErrorStatus(err.message || String(err));
       }} finally {{
         livenessState.running = false;
         updateLivenessHint();
