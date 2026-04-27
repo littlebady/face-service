@@ -219,6 +219,7 @@ class FaceDB:
                     face_threshold REAL NOT NULL DEFAULT 0.6,
                     top_k INTEGER NOT NULL DEFAULT 1,
                     strict_liveness_required INTEGER NOT NULL DEFAULT 0,
+                    strict_liveness_full_actions INTEGER NOT NULL DEFAULT 0,
                     checkin_once INTEGER NOT NULL DEFAULT 1,
                     qr_token TEXT NOT NULL UNIQUE,
                     qr_expires_at_ms INTEGER NOT NULL,
@@ -276,6 +277,14 @@ class FaceDB:
         }
         if "matched_user_id" not in attendance_columns:
             conn.execute("ALTER TABLE attendance_records ADD COLUMN matched_user_id INTEGER")
+
+        session_columns = {
+            str(row["name"]) for row in conn.execute("PRAGMA table_info(attendance_sessions)").fetchall()
+        }
+        if "strict_liveness_full_actions" not in session_columns:
+            conn.execute(
+                "ALTER TABLE attendance_sessions ADD COLUMN strict_liveness_full_actions INTEGER NOT NULL DEFAULT 0"
+            )
 
     def _ensure_default_teacher_and_course(self, conn: sqlite3.Connection) -> None:
         teacher_row = conn.execute(
@@ -1436,6 +1445,7 @@ class FaceDB:
             "face_threshold": float(row["face_threshold"]),
             "top_k": int(row["top_k"]),
             "strict_liveness_required": bool(int(row["strict_liveness_required"])),
+            "strict_liveness_full_actions": bool(int(row["strict_liveness_full_actions"])),
             "checkin_once": bool(int(row["checkin_once"])),
             "qr_token": str(row["qr_token"]),
             "qr_expires_at_ms": int(row["qr_expires_at_ms"]),
@@ -1461,6 +1471,7 @@ class FaceDB:
         top_k: int,
         strict_liveness_required: bool,
         checkin_once: bool,
+        strict_liveness_full_actions: bool = False,
         qr_ttl_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
         title_text = str(title or "").strip() or "课堂签到"
@@ -1492,9 +1503,9 @@ class FaceDB:
                     course_id, teacher_user_id, title, status,
                     start_time_ms, end_time_ms,
                     geofence_enabled, center_lat, center_lng, radius_m,
-                    face_threshold, top_k, strict_liveness_required, checkin_once,
+                    face_threshold, top_k, strict_liveness_required, strict_liveness_full_actions, checkin_once,
                     qr_token, qr_expires_at_ms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     int(course_id),
@@ -1510,6 +1521,7 @@ class FaceDB:
                     float(face_threshold),
                     int(top_k),
                     1 if strict_liveness_required else 0,
+                    1 if strict_liveness_full_actions else 0,
                     1 if checkin_once else 0,
                     token,
                     qr_expires_at_ms,

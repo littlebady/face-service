@@ -344,6 +344,11 @@
       background: #0f172a;
     }
 
+    #camera-preview {
+      transform: scaleX(-1);
+      transform-origin: center;
+    }
+
     .camera-box canvas {
       display: none;
     }
@@ -413,9 +418,9 @@
 </head>
 <body>
   <div class="page">
-    <section class="hero">
-      <h1>智能签到中心</h1>
-      <p>面向比赛演示的完整签到页面：支持人脸注册、相似检索、围栏签到、定位辅助、历史记录与识别结果可视化。</p>
+    <section class="hero" id="hero-section">
+      <h1 id="hero-title">智能签到中心</h1>
+      <p id="hero-desc">面向比赛演示的完整签到页面：支持人脸注册、相似检索、围栏签到、定位辅助、历史记录与识别结果可视化。</p>
       <div class="metrics">
         <div class="metric"><div class="label">当前注册人数</div><div class="value" id="m-faces">-</div></div>
         <div class="metric"><div class="label">最近签到记录</div><div class="value" id="m-checkins">-</div></div>
@@ -434,7 +439,7 @@
 
     <section class="layout" style="margin-top: 12px;">
       <div style="display:grid; gap:14px;">
-        <article class="panel">
+        <article class="panel" id="checkin-panel">
           <div class="panel-head">
             <h2>签到操作区</h2>
             <button type="button" class="secondary" id="btn-refresh">刷新看板</button>
@@ -536,7 +541,7 @@
           </div>
         </article>
 
-        <article class="panel">
+        <article class="panel" id="register-panel">
           <div class="panel-head"><h2>人脸注册与检索</h2></div>
           <div class="panel-body">
             <div class="grid-2">
@@ -571,21 +576,21 @@
       </div>
 
       <div style="display:grid; gap:14px;">
-        <article class="panel">
+        <article class="panel" id="result-panel">
           <div class="panel-head"><h2>本次结果</h2></div>
           <div class="panel-body" id="result-area">
             <div class="hint">执行“签到 / 注册 / 检索”后，会在这里显示可视化结果。</div>
           </div>
         </article>
 
-        <article class="panel">
+        <article class="panel" id="checkin-history-panel">
           <div class="panel-head"><h2>最近签到</h2></div>
           <div class="panel-body">
             <div class="history" id="checkin-history"></div>
           </div>
         </article>
 
-        <article class="panel">
+        <article class="panel" id="face-history-panel">
           <div class="panel-head"><h2>已注册人脸</h2></div>
           <div class="panel-body">
             <div class="history" id="face-history"></div>
@@ -604,6 +609,14 @@
 
   <script>
     const el = {
+      heroSection: document.getElementById('hero-section'),
+      heroTitle: document.getElementById('hero-title'),
+      heroDesc: document.getElementById('hero-desc'),
+      checkinPanel: document.getElementById('checkin-panel'),
+      registerPanel: document.getElementById('register-panel'),
+      resultPanel: document.getElementById('result-panel'),
+      checkinHistoryPanel: document.getElementById('checkin-history-panel'),
+      faceHistoryPanel: document.getElementById('face-history-panel'),
       mFaces: document.getElementById('m-faces'),
       mCheckins: document.getElementById('m-checkins'),
       mLast: document.getElementById('m-last'),
@@ -652,6 +665,9 @@
     };
 
     const isStandaloneHtml = window.location.protocol === 'file:';
+    const query = new URLSearchParams(window.location.search);
+    const sessionToken = (query.get('session_token') || '').trim();
+    const isSessionMode = !!sessionToken;
     const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
     const MEDIAPIPE_VERSION = '20260413_3';
     let apiBase = isStandaloneHtml ? (localStorage.getItem('face_api_base') || DEFAULT_API_BASE) : '';
@@ -659,6 +675,7 @@
     let capturedBlob = null;
     let capturedObjectUrl = null;
     let livenessLoopToken = 0;
+    let sessionInfo = null;
     const LIVE_EXPIRE_MS = 3 * 60 * 1000;
     const scriptPromises = {};
 
@@ -748,12 +765,19 @@
       yawMax: null,
       mouthPeak: 0,
       scalePeak: 0,
+      turnLeftSign: 1,
+      turnActionCount: 0,
+      turnDirectionCalibrated: false,
       proof: null,
       ticket: '',
       ticketExpiresAt: 0,
       ticketKeyHash: '',
       antiSpoofScore: null,
     };
+
+    function publicSessionPath(suffix = '') {
+      return `/attendance/public/${encodeURIComponent(sessionToken)}${suffix}`;
+    }
 
     function setStatus(message, type = 'info') {
       el.status.className = `status ${type}`;
@@ -861,6 +885,38 @@
       if (faceDetect.multiple_faces) {
         targetLines.push(`提示: ${faceDetect.warning || '检测到多张人脸'}`);
       }
+    }
+
+    async function loadSessionInfo() {
+      if (!isSessionMode) return null;
+      const data = await fetchJson(publicSessionPath(''));
+      sessionInfo = data.session || null;
+      return sessionInfo;
+    }
+
+    function applySessionModeUi() {
+      if (!isSessionMode) return;
+      if (el.registerPanel) el.registerPanel.style.display = 'none';
+      if (el.faceHistoryPanel) el.faceHistoryPanel.style.display = 'none';
+      if (el.checkinHistoryPanel) el.checkinHistoryPanel.style.display = 'none';
+      if (el.btnRefresh) el.btnRefresh.style.display = 'none';
+      if (el.btnSuggest) el.btnSuggest.style.display = 'none';
+      if (el.autoGeofence) el.autoGeofence.checked = false;
+      if (el.autoGeofence) el.autoGeofence.disabled = true;
+      if (el.geofencePerson) el.geofencePerson.value = '';
+      if (el.geofencePerson) el.geofencePerson.disabled = true;
+      if (el.centerLat) el.centerLat.value = '';
+      if (el.centerLng) el.centerLng.value = '';
+      if (el.centerLat) el.centerLat.disabled = true;
+      if (el.centerLng) el.centerLng.disabled = true;
+      if (el.radiusM) el.radiusM.disabled = true;
+      if (el.threshold) el.threshold.disabled = true;
+      if (el.topK) el.topK.disabled = true;
+      if (el.heroTitle) el.heroTitle.textContent = '扫码签到（完整版动作活体）';
+      if (el.heroDesc) {
+        el.heroDesc.textContent = '当前页面为会话模式：请先完成随机动作活体挑战，再拍照提交本场签到。';
+      }
+      if (el.btnCheckin) el.btnCheckin.textContent = '提交本场签到';
     }
 
     function loadScriptOnce(src) {
@@ -1117,6 +1173,9 @@
       liveness.yawMax = null;
       liveness.mouthPeak = 0;
       liveness.scalePeak = 0;
+      liveness.turnLeftSign = 1;
+      liveness.turnActionCount = 0;
+      liveness.turnDirectionCalibrated = false;
       liveness.proof = null;
       liveness.ticket = '';
       liveness.ticketExpiresAt = 0;
@@ -1271,9 +1330,11 @@
       if (!liveness.proof || !liveness.passed) {
         throw new Error('未完成有效活体检测，请先完成随机动作挑战');
       }
-      const keyHash = await sha256HexOfBlob(imagePayload.data);
+      const keyHash = isSessionMode ? '' : await sha256HexOfBlob(imagePayload.data);
       const now = Date.now();
       if (
+        !isSessionMode
+        &&
         liveness.ticket
         && liveness.ticketKeyHash === keyHash
         && now < (liveness.ticketExpiresAt - 2000)
@@ -1288,20 +1349,23 @@
 
       const formData = new FormData();
       formData.append('proof', JSON.stringify(liveness.proof));
-      formData.append('key_image_hash', keyHash);
       formData.append('key_image', imagePayload.data, imagePayload.name);
+      if (!isSessionMode) {
+        formData.append('key_image_hash', keyHash);
+      }
       evidenceFrames.forEach((blob, idx) => {
         formData.append('evidence_frames', blob, `evidence-${idx + 1}.jpg`);
       });
 
-      const verifyResp = await fetchJson('/checkins/liveness/verify', { method: 'POST', body: formData });
+      const verifyPath = isSessionMode ? publicSessionPath('/liveness/verify') : '/checkins/liveness/verify';
+      const verifyResp = await fetchJson(verifyPath, { method: 'POST', body: formData });
       if (!verifyResp?.ok || !verifyResp?.liveness_ticket) {
         throw new Error(verifyResp?.reason || '严格活体复核失败');
       }
 
       liveness.ticket = verifyResp.liveness_ticket;
       liveness.ticketExpiresAt = Number(verifyResp?.session?.expires_at_ms || 0);
-      liveness.ticketKeyHash = keyHash;
+      liveness.ticketKeyHash = isSessionMode ? '' : keyHash;
       liveness.antiSpoofScore = Number(verifyResp?.anti_spoof?.live_score ?? NaN);
       return liveness.ticket;
     }
@@ -1352,24 +1416,62 @@
       } else if (actionKey === 'turn_left') {
         const threshold = Math.max(0.10, Math.abs(liveness.yawBaseline) * 0.25 + 0.09);
         // 对用户而言“向左转头”在前摄镜像预览下通常表现为 yawDelta 增大。
-        if (metrics.yawDelta > threshold) {
+        const leftSign = liveness.turnLeftSign >= 0 ? 1 : -1;
+        const expectedSign = leftSign;
+        const directHit = metrics.yawDelta * expectedSign > threshold;
+        const oppositeHit = metrics.yawDelta * -expectedSign > threshold;
+        if (directHit) {
           stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+          stepData.oppositeHoldFrames = 0;
+        } else if (oppositeHit) {
+          stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = (stepData.oppositeHoldFrames || 0) + 1;
         } else {
           stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = 0;
         }
         if ((stepData.holdFrames || 0) >= 2) {
+          liveness.turnActionCount += 1;
           liveness.stepData = {};
+          return true;
+        }
+        const canAutoFlip = !liveness.turnDirectionCalibrated && liveness.turnActionCount === 0;
+        if (canAutoFlip && (stepData.oppositeHoldFrames || 0) >= 3) {
+          liveness.turnLeftSign = -leftSign;
+          liveness.turnDirectionCalibrated = true;
+          liveness.turnActionCount += 1;
+          liveness.stepData = {};
+          setStatus('已自动校准左右转头方向，请继续按提示动作', 'info');
           return true;
         }
       } else if (actionKey === 'turn_right') {
         const threshold = Math.max(0.10, Math.abs(liveness.yawBaseline) * 0.25 + 0.09);
-        if (metrics.yawDelta < -threshold) {
+        const leftSign = liveness.turnLeftSign >= 0 ? 1 : -1;
+        const expectedSign = -leftSign;
+        const directHit = metrics.yawDelta * expectedSign > threshold;
+        const oppositeHit = metrics.yawDelta * -expectedSign > threshold;
+        if (directHit) {
           stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+          stepData.oppositeHoldFrames = 0;
+        } else if (oppositeHit) {
+          stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = (stepData.oppositeHoldFrames || 0) + 1;
         } else {
           stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = 0;
         }
         if ((stepData.holdFrames || 0) >= 2) {
+          liveness.turnActionCount += 1;
           liveness.stepData = {};
+          return true;
+        }
+        const canAutoFlip = !liveness.turnDirectionCalibrated && liveness.turnActionCount === 0;
+        if (canAutoFlip && (stepData.oppositeHoldFrames || 0) >= 3) {
+          liveness.turnLeftSign = -leftSign;
+          liveness.turnDirectionCalibrated = true;
+          liveness.turnActionCount += 1;
+          liveness.stepData = {};
+          setStatus('已自动校准左右转头方向，请继续按提示动作', 'info');
           return true;
         }
       } else if (actionKey === 'mouth_open') {
@@ -1793,6 +1895,26 @@
     }
 
     async function refreshDashboard() {
+      if (isSessionMode) {
+        const session = await loadSessionInfo();
+        if (!session) {
+          throw new Error('签到场次不存在或已失效');
+        }
+        el.mFaces.textContent = '-';
+        el.mCheckins.textContent = '-';
+        el.mLast.textContent = '-';
+        const liveText = session.can_checkin ? '可签到' : `不可签到(${session.live_status || '-'})`;
+        setStatus(
+          `${session.title || '签到场次'} | ${session.course_name || '-'} | ${liveText} | ${toTime(session.start_time_ms)} ~ ${toTime(session.end_time_ms)}`,
+          session.can_checkin ? 'ok' : 'warn'
+        );
+        if (el.btnCheckin) el.btnCheckin.disabled = !session.can_checkin;
+        if (el.btnCameraStart) el.btnCameraStart.disabled = !session.can_checkin;
+        if (el.btnCameraShot) el.btnCameraShot.disabled = !session.can_checkin;
+        if (el.btnLocate) el.btnLocate.disabled = !session.can_checkin;
+        return;
+      }
+
       const [facesResp, checkinsResp] = await Promise.all([
         fetchJson('/faces?limit=12'),
         fetchJson('/checkins?limit=12'),
@@ -1826,6 +1948,9 @@
     }
 
     async function handleRegister() {
+      if (isSessionMode) {
+        throw new Error('会话模式不支持在签到页注册人脸，请到个人主页注册');
+      }
       const name = el.registerName.value.trim();
       const file = el.registerFile.files?.[0];
       if (!name) throw new Error('请输入注册姓名');
@@ -1851,6 +1976,9 @@
     }
 
     async function handleSearch() {
+      if (isSessionMode) {
+        throw new Error('会话模式不支持人脸检索');
+      }
       const file = el.searchFile.files?.[0];
       if (!file) throw new Error('请选择检索照片');
 
@@ -1883,6 +2011,9 @@
     }
 
     async function handleSuggestGeofence() {
+      if (isSessionMode) {
+        throw new Error('会话模式已使用发布者配置，无需推荐围栏');
+      }
       const query = new URLSearchParams();
       const person = el.geofencePerson.value.trim();
       if (person) query.set('person_name', person);
@@ -1928,8 +2059,20 @@
     }
 
     async function handleCheckin() {
+      if (isSessionMode && !sessionInfo) {
+        await loadSessionInfo();
+      }
+      if (isSessionMode && sessionInfo && !sessionInfo.can_checkin) {
+        renderCheckinFailure('当前场次不可签到', [
+          `状态: ${sessionInfo.live_status || '-'}`,
+        ]);
+        return;
+      }
+      const requiresLiveness = isSessionMode
+        ? Boolean(sessionInfo?.strict_liveness_required)
+        : true;
       const livenessExpired = liveness.passed && (Date.now() - liveness.passedAt > LIVE_EXPIRE_MS);
-      if (!liveness.passed || livenessExpired) {
+      if (requiresLiveness && (!liveness.passed || livenessExpired)) {
         liveness.passed = false;
         refreshLivenessUi();
         renderCheckinFailure('未完成活体检测（随机动作挑战）', [
@@ -1938,6 +2081,8 @@
         return;
       }
       if (
+        requiresLiveness
+        && 
         LIVE_MODE === 'strict'
         && (!liveness.proof || !liveness.proof.challenge_id || !liveness.proof.nonce)
       ) {
@@ -1958,7 +2103,7 @@
       }
 
       let strictTicket = '';
-      if (LIVE_MODE === 'strict') {
+      if (requiresLiveness && LIVE_MODE === 'strict') {
         try {
           setStatus('严格版：正在上传短证据片段并执行后端 anti-spoof 复核...', 'info');
           strictTicket = await ensureStrictLivenessTicket(imagePayload);
@@ -1988,28 +2133,33 @@
       formData.append('file', imagePayload.data, imagePayload.name);
       formData.append('lat', String(el.lat.value));
       formData.append('lng', String(el.lng.value));
-      formData.append('threshold', String(Number(el.threshold.value) || 0.6));
-      formData.append('top_k', String(Number(el.topK.value) || 1));
-      formData.append('auto_geofence', String(Boolean(el.autoGeofence.checked)));
-      if (liveness.proof) {
-        formData.append('liveness_proof', JSON.stringify(liveness.proof));
+      if (!isSessionMode) {
+        formData.append('threshold', String(Number(el.threshold.value) || 0.6));
+        formData.append('top_k', String(Number(el.topK.value) || 1));
+        formData.append('auto_geofence', String(Boolean(el.autoGeofence.checked)));
+        if (liveness.proof) {
+          formData.append('liveness_proof', JSON.stringify(liveness.proof));
+        }
       }
       if (strictTicket) {
         formData.append('liveness_ticket', strictTicket);
       }
 
-      const person = el.geofencePerson.value.trim();
-      if (person) formData.append('geofence_person_name', person);
+      if (!isSessionMode) {
+        const person = el.geofencePerson.value.trim();
+        if (person) formData.append('geofence_person_name', person);
 
-      if (el.centerLat.value && el.centerLng.value) {
-        formData.append('center_lat', String(el.centerLat.value));
-        formData.append('center_lng', String(el.centerLng.value));
-      }
-      if (el.radiusM.value) {
-        formData.append('radius_m', String(el.radiusM.value));
+        if (el.centerLat.value && el.centerLng.value) {
+          formData.append('center_lat', String(el.centerLat.value));
+          formData.append('center_lng', String(el.centerLng.value));
+        }
+        if (el.radiusM.value) {
+          formData.append('radius_m', String(el.radiusM.value));
+        }
       }
 
-      const data = await fetchJson('/checkin', { method: 'POST', body: formData });
+      const checkinPath = isSessionMode ? publicSessionPath('/checkin') : '/checkin';
+      const data = await fetchJson(checkinPath, { method: 'POST', body: formData });
 
       const lines = [
         `状态: ${data.status || '-'}`,
@@ -2103,6 +2253,7 @@
       }
     });
 
+    applySessionModeUi();
     initStandaloneMode();
     refreshLivenessUi();
     refreshDashboard().catch((err) => setStatus(err.message || String(err), 'err'));

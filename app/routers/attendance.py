@@ -50,12 +50,27 @@ def _student_checkin_url(request: Request, token: str) -> str:
     return f"{base_url}/s/{token}"
 
 
+def _student_checkin_url_by_mode(request: Request, token: str, *, strict_full_actions: bool) -> str:
+    public_base = str(os.getenv("FACE_SERVICE_PUBLIC_BASE_URL", "")).strip()
+    if public_base:
+        base_url = public_base.rstrip("/")
+    else:
+        base_url = str(request.base_url).rstrip("/")
+    if strict_full_actions:
+        return f"{base_url}/s/full/{token}"
+    return f"{base_url}/s/{token}"
+
+
 def _serialize_session(session: Dict[str, Any], request: Request) -> Dict[str, Any]:
     payload = dict(session)
     live_status = _session_live_status(payload)
     payload["live_status"] = live_status
     payload["can_checkin"] = live_status == "active"
-    payload["student_checkin_url"] = _student_checkin_url(request, str(payload.get("qr_token") or ""))
+    payload["student_checkin_url"] = _student_checkin_url_by_mode(
+        request,
+        str(payload.get("qr_token") or ""),
+        strict_full_actions=bool(payload.get("strict_liveness_full_actions")),
+    )
     return payload
 
 
@@ -75,6 +90,7 @@ class CreateSessionRequest(BaseModel):
     face_threshold: float = Field(0.6, ge=0.0, le=1.0)
     top_k: int = Field(1, ge=1, le=5)
     strict_liveness_required: bool = False
+    strict_liveness_full_actions: bool = False
     checkin_once: bool = True
 
 
@@ -121,6 +137,7 @@ async def create_session(
         default_course = db.ensure_default_course_for_user(user_id=int(user["user_id"]))
         target_course_id = int(default_course["course_id"])
     try:
+        strict_required = bool(payload.strict_liveness_required or payload.strict_liveness_full_actions)
         session = db.create_attendance_session(
             course_id=target_course_id,
             teacher_user_id=int(user["user_id"]),
@@ -133,8 +150,9 @@ async def create_session(
             radius_m=payload.radius_m if payload.geofence_enabled else None,
             face_threshold=payload.face_threshold,
             top_k=payload.top_k,
-            strict_liveness_required=payload.strict_liveness_required,
+            strict_liveness_required=strict_required,
             checkin_once=payload.checkin_once,
+            strict_liveness_full_actions=bool(payload.strict_liveness_full_actions),
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -241,7 +259,11 @@ async def get_public_session_qr(
     session = db.get_attendance_session_by_qr_token(token=token)
     if not session:
         raise HTTPException(status_code=404, detail="签到码无效")
-    student_url = _student_checkin_url(request, token)
+    student_url = _student_checkin_url_by_mode(
+        request,
+        token,
+        strict_full_actions=bool(session.get("strict_liveness_full_actions")),
+    )
     return {
         "ok": True,
         "student_checkin_url": student_url,

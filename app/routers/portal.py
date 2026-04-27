@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import quote
 
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -567,11 +568,13 @@ async def app_dashboard_page() -> str:
             <input id="centerLng" type="number" step="0.000001" />
           </div>
         </div>
-        <div class="hint" id="geoHint">正在尝试自动获取发布者定位，用于填充围栏中心...</div>
-        <label class="check"><input id="checkOnce" type="checkbox" checked /> 每人仅可成功签到一次</label>
-        <label class="check"><input id="strictLive" type="checkbox" /> 启用严格活体（当前简版扫码页不建议开启）</label>
+        <label class="check"><input id="geofenceAuto" type="checkbox" checked /> 地理围栏（自动定位发布者并填充围栏中心）</label>
+        <div class="hint" id="geoHint">地理围栏已开启：将自动获取发布者定位并填入围栏中心。</div>
+        <label class="check"><input id="checkOnce" type="checkbox" checked /> 每人仅可签到成功一次</label>
+        <label class="check"><input id="liveCheck" type="checkbox" /> 活体签到（活体帧检测）</label>
+        <label class="check"><input id="strictLiveFull" type="checkbox" /> 严格活体签到（规定动作挑战）</label>
         <button class="btn-primary" id="btnPublish">发布签到</button>
-        <div class="hint">若填写经纬度则自动启用地理围栏；不填则不校验定位。</div>
+        <div class="hint">若开启地理围栏，会在发布前自动定位并作为围栏中心。</div>
         <div id="publishMsg" class="status"></div>
       </article>
 
@@ -775,16 +778,27 @@ async def app_dashboard_page() -> str:
     }
 
     async function publishSession() {
-      try {
-        await autoFillPublisherLocation(true);
-      } catch (err) {
-        setStatus("publishMsg", "自动定位失败，请允许定位权限后重试发布", "err");
-        throw err;
+      const strictFull = !!$("strictLiveFull").checked;
+      const strictSimple = !!$("liveCheck").checked;
+      const geofenceAuto = !!$("geofenceAuto").checked;
+
+      if (geofenceAuto) {
+        try {
+          await autoFillPublisherLocation(true);
+        } catch (err) {
+          setStatus("publishMsg", "地理围栏已开启，但自动定位失败，请允许定位权限后重试", "err");
+          throw err;
+        }
+      } else {
+        setGeoHint("地理围栏未开启：本场次不做地理位置校验。", "warn");
       }
 
       const centerLat = toNum($("centerLat").value, null);
       const centerLng = toNum($("centerLng").value, null);
-      const geofenceEnabled = centerLat != null && centerLng != null;
+      const geofenceEnabled = geofenceAuto;
+      if (geofenceEnabled && (centerLat == null || centerLng == null)) {
+        throw new Error("地理围栏已开启，但围栏中心坐标为空");
+      }
 
       const payload = {
         course_id: toNum($("courseId").value, null),
@@ -796,7 +810,8 @@ async def app_dashboard_page() -> str:
         center_lat: geofenceEnabled ? centerLat : null,
         center_lng: geofenceEnabled ? centerLng : null,
         radius_m: toNum($("radius").value, 200),
-        strict_liveness_required: !!$("strictLive").checked,
+        strict_liveness_required: strictSimple || strictFull,
+        strict_liveness_full_actions: strictFull,
         checkin_once: !!$("checkOnce").checked,
       };
 
@@ -887,6 +902,32 @@ async def app_dashboard_page() -> str:
       }
     });
 
+    $("geofenceAuto").addEventListener("change", async () => {
+      if ($("geofenceAuto").checked) {
+        try {
+          await autoFillPublisherLocation(true);
+        } catch (err) {
+          setGeoHint("自动定位失败：请检查定位权限，发布前会再次尝试。", "warn");
+        }
+      } else {
+        $("centerLat").value = "";
+        $("centerLng").value = "";
+        setGeoHint("地理围栏已关闭，本场次不校验签到位置。", "warn");
+      }
+    });
+
+    $("strictLiveFull").addEventListener("change", () => {
+      if ($("strictLiveFull").checked) {
+        $("liveCheck").checked = true;
+      }
+    });
+
+    $("liveCheck").addEventListener("change", () => {
+      if (!$("liveCheck").checked) {
+        $("strictLiveFull").checked = false;
+      }
+    });
+
     $("btnRefresh").addEventListener("click", async () => {
       try {
         await refreshAll();
@@ -919,7 +960,11 @@ async def app_dashboard_page() -> str:
       try {
         await loadMe();
         try {
-          await autoFillPublisherLocation(false);
+          if ($("geofenceAuto").checked) {
+            await autoFillPublisherLocation(false);
+          } else {
+            setGeoHint("地理围栏未开启：本场次不校验签到位置。", "warn");
+          }
         } catch (err) {
           setGeoHint("自动定位未完成：发布前会再次尝试获取定位。", "warn");
         }
@@ -1431,6 +1476,8 @@ async def scan_checkin_page(token: str) -> str:
       min-height: 260px;
       background: #0b162f;
       border-radius: 10px;
+      transform: scaleX(-1);
+      transform-origin: center;
     }}
     canvas {{
       display: none;
@@ -1581,6 +1628,13 @@ async def scan_checkin_page(token: str) -> str:
         setStatus("sessionStatus", "当前场次不可签到", "err");
         document.getElementById("btnSubmit").disabled = true;
         btnLiveness.style.display = "none";
+      }} else if (session.strict_liveness_full_actions) {{
+        setStatus("sessionStatus", "当前场次要求完整版动作活体，请使用动作版签到页。正在跳转...", "warn");
+        document.getElementById("btnSubmit").disabled = true;
+        btnLiveness.style.display = "none";
+        setTimeout(() => {{
+          window.location.href = "/s/full/" + encodeURIComponent(token);
+        }}, 300);
       }} else if (session.strict_liveness_required) {{
         setStatus("sessionStatus", "当前场次已开启严格活体：请先完成活体检测，再点击签到提交。", "warn");
         btnLiveness.style.display = "inline-block";
@@ -1814,3 +1868,9 @@ async def scan_checkin_page(token: str) -> str:
 </body>
 </html>
 """
+
+
+@router.get("/s/full/{token}", include_in_schema=False)
+async def full_liveness_scan_redirect(token: str) -> RedirectResponse:
+    encoded = quote(str(token or "").strip(), safe="")
+    return RedirectResponse(url=f"/checkin-ui?session_token={encoded}", status_code=307)
