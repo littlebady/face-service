@@ -1548,12 +1548,13 @@ async def scan_checkin_page(token: str) -> str:
     const LIVE_MIN_TOTAL_MS = 4800;
     const LIVE_NEUTRAL_FRAMES = 5;
     const LIVE_NEUTRAL_YAW_ABS = 0.05;
-    const LIVE_CLOSE_EAR_FACTOR = 0.78;
-    const LIVE_OPEN_EAR_FACTOR = 0.85;
-    const LIVE_BLINK_MIN_DEPTH_ABS = 0.016;
-    const LIVE_BLINK_MIN_DEPTH_RATIO = 0.11;
-    const LIVE_BLINK_REBOUND_RATIO = 0.72;
-    const LIVE_BLINK_SINGLE_FRAME_DEPTH_BOOST = 1.32;
+    const LIVE_CLOSE_EAR_FACTOR = 0.9;
+    const LIVE_OPEN_EAR_FACTOR = 0.78;
+    const LIVE_BLINK_MIN_DEPTH_ABS = 0.009;
+    const LIVE_BLINK_MIN_DEPTH_RATIO = 0.06;
+    const LIVE_BLINK_REBOUND_RATIO = 0.35;
+    const LIVE_BLINK_SINGLE_FRAME_DEPTH_BOOST = 1.05;
+    const LIVE_BLINK_STRONG_DEPTH_BOOST = 1.35;
     const LIVE_STRICT_FREEZE_FRAMES = 24;
     const LIVE_STRICT_MAX_MISSING_FRAMES = 16;
     const LIVE_STRICT_TURN_MAX_MISSING_FRAMES = 36;
@@ -2029,6 +2030,7 @@ async def scan_checkin_page(token: str) -> str:
         const depth = maxEar - minEar;
         const minDepth = Math.max(LIVE_BLINK_MIN_DEPTH_ABS, baselineEar * LIVE_BLINK_MIN_DEPTH_RATIO);
         const rebound = metrics.ear - minEar;
+        const strongDepth = depth > minDepth * LIVE_BLINK_STRONG_DEPTH_BOOST;
 
         if (metrics.ear < closeThreshold) {{
           stepData.closedFrames = (stepData.closedFrames || 0) + 1;
@@ -2041,6 +2043,11 @@ async def scan_checkin_page(token: str) -> str:
         }}
 
         const reopened = metrics.ear > openThreshold || rebound > minDepth * LIVE_BLINK_REBOUND_RATIO;
+        if ((stepData.closedFrames || 0) >= 1 && strongDepth) {{
+          livenessState.blinkCount += 1;
+          livenessState.stepData = {{}};
+          return true;
+        }}
         if (stepData.closed && reopened && depth > minDepth) {{
           livenessState.blinkCount += 1;
           livenessState.stepData = {{}};
