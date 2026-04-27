@@ -3,14 +3,16 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from app.core.settings import Settings
-from app.dependencies import get_current_user, get_face_db, get_liveness_manager, get_settings
+from app.dependencies import get_antispoof_engine, get_current_user, get_face_db, get_liveness_manager, get_settings
+from app.services import checkin_service
+from app.services.antispoof_service import AntiSpoofEngine
 from app.services.liveness_service import LivenessChallengeManager
 from app.utils.media import haversine_m, to_media_url
 from app.utils.qr import build_qr_png_data_uri
@@ -245,6 +247,40 @@ async def get_public_session_qr(
         "student_checkin_url": student_url,
         "qr_data_uri": build_qr_png_data_uri(student_url),
     }
+
+
+@router.post("/public/{token}/liveness/verify", summary="扫码页严格活体验证并签发票据")
+async def verify_public_liveness(
+    token: str,
+    proof: Optional[str] = Form(None, description="活体证明 JSON"),
+    key_image: UploadFile = File(..., description="活体关键帧"),
+    evidence_frames: Optional[List[UploadFile]] = File(None, description="活体证据帧序列"),
+    db: FaceDB = Depends(get_face_db),
+    settings: Settings = Depends(get_settings),
+    liveness_manager: LivenessChallengeManager = Depends(get_liveness_manager),
+    antispoof_engine: AntiSpoofEngine = Depends(get_antispoof_engine),
+):
+    session = db.get_attendance_session_by_qr_token(token=token)
+    if not session:
+        raise HTTPException(status_code=404, detail="签到码无效")
+    if _session_live_status(session) != "active":
+        raise HTTPException(status_code=400, detail="当前场次不可签到")
+    if not bool(session.get("strict_liveness_required")):
+        return {"ok": True, "mode": "skip", "reason": "当前场次未开启严格活体"}
+
+    key_bytes = await key_image.read()
+    await key_image.seek(0)
+    key_hash = liveness_manager.sha256_hex(key_bytes)
+    return await checkin_service.verify_liveness_evidence(
+        db=db,
+        settings=settings,
+        liveness_manager=liveness_manager,
+        antispoof_engine=antispoof_engine,
+        proof=proof,
+        key_image_hash=key_hash,
+        key_image=key_image,
+        evidence_frames=evidence_frames,
+    )
 
 
 @router.post("/public/{token}/checkin", summary="学生扫码签到提交")

@@ -683,6 +683,9 @@
     const LIVE_OPEN_EAR_FACTOR = 0.9;
     const LIVE_STRICT_FREEZE_FRAMES = 24;
     const LIVE_STRICT_MAX_MISSING_FRAMES = 16;
+    const LIVE_STRICT_TURN_MAX_MISSING_FRAMES = 36;
+    const LIVE_STRICT_TURN_MISSING_GRACE_MS = 1400;
+    const LIVE_STRICT_TURN_TIMEOUT_COMPENSATE_MAX_MS = 2200;
     const LIVE_STRICT_FREEZE_DELTA = 0.0016;
     const LIVE_EVIDENCE_FRAMES = 8;
     const LIVE_EVIDENCE_INTERVAL_MS = 120;
@@ -731,6 +734,9 @@
       challengeNonce: '',
       challengeExpiresAt: 0,
       missingFrames: 0,
+      missingSinceAt: 0,
+      missingActionAtStart: '',
+      lastFaceDetectedAt: 0,
       motionAccumulator: 0,
       motionSamples: 0,
       freezeRun: 0,
@@ -1097,6 +1103,9 @@
       liveness.challengeNonce = '';
       liveness.challengeExpiresAt = 0;
       liveness.missingFrames = 0;
+      liveness.missingSinceAt = 0;
+      liveness.missingActionAtStart = '';
+      liveness.lastFaceDetectedAt = 0;
       liveness.motionAccumulator = 0;
       liveness.motionSamples = 0;
       liveness.freezeRun = 0;
@@ -1303,6 +1312,10 @@
       return Math.abs(yawDelta) <= LIVE_NEUTRAL_YAW_ABS && mouthRatio <= mouthLimit;
     }
 
+    function isTurnAction(actionKey) {
+      return actionKey === 'turn_left' || actionKey === 'turn_right';
+    }
+
     function failLiveness(reason) {
       liveness.running = false;
       liveness.passed = false;
@@ -1395,25 +1408,67 @@
 
     function onLivenessResults(results) {
       if (!liveness.running) return;
-      if (LIVE_MODE === 'strict' && liveness.challengeExpiresAt > 0 && Date.now() > liveness.challengeExpiresAt) {
+      const nowMs = Date.now();
+      if (LIVE_MODE === 'strict' && liveness.challengeExpiresAt > 0 && nowMs > liveness.challengeExpiresAt) {
         failLiveness('严格活体挑战已过期，请重新开始');
         return;
       }
+      const activeAction = liveness.challengeActions[liveness.challengeIndex] || '';
       const landmarks = results?.multiFaceLandmarks?.[0];
       if (!landmarks) {
         liveness.missingFrames += 1;
+        if (!liveness.missingSinceAt) {
+          liveness.missingSinceAt = nowMs;
+          liveness.missingActionAtStart = activeAction;
+        }
+        const missingAction = liveness.missingActionAtStart || activeAction;
+        const missingOnTurn = isTurnAction(missingAction);
+        const withinTurnGrace = missingOnTurn
+          && liveness.lastFaceDetectedAt > 0
+          && (nowMs - liveness.lastFaceDetectedAt) <= LIVE_STRICT_TURN_MISSING_GRACE_MS;
+        const missingLimit = missingOnTurn
+          ? LIVE_STRICT_TURN_MAX_MISSING_FRAMES
+          : LIVE_STRICT_MAX_MISSING_FRAMES;
         if (
           LIVE_MODE === 'strict'
           && !liveness.calibrating
-          && liveness.missingFrames > LIVE_STRICT_MAX_MISSING_FRAMES
+          && !withinTurnGrace
+          && liveness.missingFrames > missingLimit
         ) {
-          failLiveness('人脸跟踪中断次数过多，活体验证失败');
+          failLiveness(
+            missingOnTurn
+              ? '转头过程中人脸跟踪长时间中断，请减小转头幅度并重试'
+              : '人脸跟踪中断次数过多，活体验证失败'
+          );
           return;
         }
-        el.liveDebug.textContent = '未检测到人脸，请正对镜头并靠近一点';
+        el.liveDebug.textContent = missingOnTurn
+          ? '转头中短暂丢失人脸，请保持动作并稍微慢一点'
+          : '未检测到人脸，请正对镜头并靠近一点';
         refreshLivenessUi();
         return;
       }
+      if (liveness.missingSinceAt > 0) {
+        const lostMs = Math.max(0, nowMs - liveness.missingSinceAt);
+        const missingAction = liveness.missingActionAtStart || activeAction;
+        if (
+          LIVE_MODE === 'strict'
+          && !liveness.calibrating
+          && isTurnAction(missingAction)
+          && lostMs > 0
+        ) {
+          const compensateMs = Math.min(lostMs, LIVE_STRICT_TURN_TIMEOUT_COMPENSATE_MAX_MS);
+          if (liveness.stepStartedAt > 0) {
+            liveness.stepStartedAt += compensateMs;
+          }
+          if (liveness.totalStartedAt > 0) {
+            liveness.totalStartedAt += compensateMs;
+          }
+        }
+        liveness.missingSinceAt = 0;
+        liveness.missingActionAtStart = '';
+      }
+      liveness.lastFaceDetectedAt = nowMs;
       liveness.missingFrames = Math.max(0, liveness.missingFrames - 1);
 
       const leftEar = computeEar(landmarks, LIVE_LEFT_EYE);

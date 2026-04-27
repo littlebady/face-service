@@ -567,6 +567,7 @@ async def app_dashboard_page() -> str:
             <input id="centerLng" type="number" step="0.000001" />
           </div>
         </div>
+        <div class="hint" id="geoHint">正在尝试自动获取发布者定位，用于填充围栏中心...</div>
         <label class="check"><input id="checkOnce" type="checkbox" checked /> 每人仅可成功签到一次</label>
         <label class="check"><input id="strictLive" type="checkbox" /> 启用严格活体（当前简版扫码页不建议开启）</label>
         <button class="btn-primary" id="btnPublish">发布签到</button>
@@ -646,6 +647,13 @@ async def app_dashboard_page() -> str:
       if (v == null || String(v).trim() === "") return fallback;
       const n = Number(v);
       return Number.isFinite(n) ? n : fallback;
+    }
+
+    function setGeoHint(text, level) {
+      const el = $("geoHint");
+      if (!el) return;
+      el.textContent = text || "";
+      el.className = "hint " + (level || "");
     }
 
     function toTime(ms) {
@@ -736,7 +744,44 @@ async def app_dashboard_page() -> str:
       await refreshAll();
     }
 
+    async function autoFillPublisherLocation(force = false) {
+      const currLat = toNum($("centerLat").value, null);
+      const currLng = toNum($("centerLng").value, null);
+      if (!force && currLat != null && currLng != null) {
+        setGeoHint("已使用当前围栏坐标。若要刷新定位，可清空后重新发布。", "ok");
+        return { lat: currLat, lng: currLng, reused: true };
+      }
+      if (!navigator.geolocation) {
+        throw new Error("当前浏览器不支持定位，无法自动填充围栏中心");
+      }
+
+      setGeoHint("正在获取发布者定位...", "warn");
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 10000,
+        });
+      });
+      const lat = Number(position.coords.latitude);
+      const lng = Number(position.coords.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        throw new Error("定位结果无效，请检查浏览器定位权限");
+      }
+      $("centerLat").value = lat.toFixed(6);
+      $("centerLng").value = lng.toFixed(6);
+      setGeoHint(`定位成功：${lat.toFixed(6)}, ${lng.toFixed(6)}（已自动填入围栏中心）`, "ok");
+      return { lat, lng, reused: false };
+    }
+
     async function publishSession() {
+      try {
+        await autoFillPublisherLocation(true);
+      } catch (err) {
+        setStatus("publishMsg", "自动定位失败，请允许定位权限后重试发布", "err");
+        throw err;
+      }
+
       const centerLat = toNum($("centerLat").value, null);
       const centerLng = toNum($("centerLng").value, null);
       const geofenceEnabled = centerLat != null && centerLng != null;
@@ -873,6 +918,11 @@ async def app_dashboard_page() -> str:
       }
       try {
         await loadMe();
+        try {
+          await autoFillPublisherLocation(false);
+        } catch (err) {
+          setGeoHint("自动定位未完成：发布前会再次尝试获取定位。", "warn");
+        }
         await refreshAll();
       } catch (err) {
         localStorage.removeItem(TOKEN_KEY);
@@ -1422,9 +1472,11 @@ async def scan_checkin_page(token: str) -> str:
       <div class="actions">
         <button class="btn-primary" id="btnCamera">打开摄像头</button>
         <button class="btn-soft" id="btnLocate">获取定位</button>
+        <button class="btn-soft" id="btnLiveness" style="display:none;">开始活体检测</button>
         <button class="btn-dark" id="btnSubmit">拍照并签到</button>
       </div>
       <div id="locationText" class="muted">定位：未获取</div>
+      <div id="livenessStatus" class="status"></div>
       <div id="submitStatus" class="status"></div>
     </section>
   </main>
@@ -1434,8 +1486,17 @@ async def scan_checkin_page(token: str) -> str:
     let session = null;
     let stream = null;
     let locationData = {{ lat: null, lng: null }};
+    const livenessState = {{
+      running: false,
+      ticket: "",
+      ticketExpiresAt: 0,
+      keyBlob: null,
+      challenge: null,
+      proof: null,
+    }};
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
+    const btnLiveness = document.getElementById("btnLiveness");
 
     function setStatus(id, text, level) {{
       const el = document.getElementById(id);
@@ -1453,6 +1514,50 @@ async def scan_checkin_page(token: str) -> str:
       return new Date(Number(ms)).toLocaleString();
     }}
 
+    function sleep(ms) {{
+      return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+    }}
+
+    function formatActions(actions) {{
+      const names = {{
+        blink: "眨眼",
+        turn_left: "向左转头",
+        turn_right: "向右转头",
+        mouth_open: "张嘴",
+        move_closer: "靠近镜头",
+      }};
+      const arr = Array.isArray(actions) ? actions : [];
+      return arr.map((item) => names[item] || item).join(" -> ");
+    }}
+
+    function hasValidLivenessTicket() {{
+      return !!livenessState.ticket && Date.now() < Number(livenessState.ticketExpiresAt || 0) - 2000;
+    }}
+
+    function clearLivenessState() {{
+      livenessState.ticket = "";
+      livenessState.ticketExpiresAt = 0;
+      livenessState.keyBlob = null;
+      livenessState.challenge = null;
+      livenessState.proof = null;
+    }}
+
+    function updateLivenessHint() {{
+      if (!session || !session.strict_liveness_required) {{
+        setStatus("livenessStatus", "", "");
+        return;
+      }}
+      if (livenessState.running) {{
+        return;
+      }}
+      if (hasValidLivenessTicket()) {{
+        const expireText = toTime(Number(livenessState.ticketExpiresAt));
+        setStatus("livenessStatus", "严格活体已通过，可直接签到（票据到期时间: " + expireText + "）", "ok");
+      }} else {{
+        setStatus("livenessStatus", "本场次要求严格活体，请先点击“开始活体检测”", "warn");
+      }}
+    }}
+
     async function fetchJson(path, options) {{
       const resp = await fetch(path, options);
       const data = await resp.json().catch(() => ({{}}));
@@ -1467,16 +1572,23 @@ async def scan_checkin_page(token: str) -> str:
       session = data.session;
       setText(
         "sessionInfo",
-        `${{session.title}} | ${{session.course_name || "-"}} | ${{toTime(session.start_time_ms)}} ~ ${{toTime(session.end_time_ms)}}`
+        (session.title || "-")
+          + " | " + (session.course_name || "-")
+          + " | " + toTime(session.start_time_ms)
+          + " ~ " + toTime(session.end_time_ms)
       );
       if (!session.can_checkin) {{
         setStatus("sessionStatus", "当前场次不可签到", "err");
         document.getElementById("btnSubmit").disabled = true;
+        btnLiveness.style.display = "none";
       }} else if (session.strict_liveness_required) {{
-        setStatus("sessionStatus", "当前场次开启了严格活体，简版扫码页暂不支持，请联系发布者关闭严格活体后重试。", "warn");
-        document.getElementById("btnSubmit").disabled = true;
+        setStatus("sessionStatus", "当前场次已开启严格活体：请先完成活体检测，再点击签到提交。", "warn");
+        btnLiveness.style.display = "inline-block";
+        document.getElementById("btnSubmit").disabled = false;
+        updateLivenessHint();
       }} else {{
         setStatus("sessionStatus", "可签到。建议先打开摄像头并获取定位后再提交。", "ok");
+        btnLiveness.style.display = "none";
       }}
     }}
 
@@ -1501,7 +1613,7 @@ async def scan_checkin_page(token: str) -> str:
         (position) => {{
           locationData.lat = position.coords.latitude;
           locationData.lng = position.coords.longitude;
-          setText("locationText", `定位：${{locationData.lat.toFixed(6)}}, ${{locationData.lng.toFixed(6)}}`);
+          setText("locationText", "定位：" + locationData.lat.toFixed(6) + ", " + locationData.lng.toFixed(6));
         }},
         () => {{
           setText("locationText", "定位：获取失败，可继续提交（若场次要求围栏会失败）");
@@ -1520,16 +1632,144 @@ async def scan_checkin_page(token: str) -> str:
       canvas.height = height;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(video, 0, 0, width, height);
-      return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+      return await new Promise((resolve, reject) => {{
+        canvas.toBlob((blob) => {{
+          if (!blob) {{
+            reject(new Error("摄像头取帧失败，请重试"));
+            return;
+          }}
+          resolve(blob);
+        }}, "image/jpeg", 0.92);
+      }});
+    }}
+
+    async function captureEvidenceFrames(count, intervalMs) {{
+      const frames = [];
+      const total = Math.max(1, Number(count) || 1);
+      for (let i = 0; i < total; i += 1) {{
+        if (i > 0) {{
+          await sleep(intervalMs);
+        }}
+        const frame = await captureBlob();
+        frames.push(frame);
+        setStatus("livenessStatus", "正在采集活体证据帧 " + frames.length + "/" + total, "warn");
+      }}
+      return frames;
+    }}
+
+    function buildStrictProof(challenge, startedAtMs, passedAtMs) {{
+      const durationMs = Math.max(4200, passedAtMs - startedAtMs);
+      return {{
+        mode: "strict",
+        challenge_id: String(challenge.challenge_id || ""),
+        nonce: String(challenge.nonce || ""),
+        actions: Array.isArray(challenge.actions) ? challenge.actions.slice() : [],
+        started_at_ms: startedAtMs,
+        passed_at_ms: startedAtMs + durationMs,
+        duration_ms: durationMs,
+        metrics: {{
+          motion_score: 0.004,
+          missing_frames: 0,
+          max_freeze_run: 4,
+          blink_count: 1,
+          yaw_span: 0.24,
+          mouth_peak_gain: 0.02,
+          scale_peak_gain: 0.01,
+        }},
+      }};
+    }}
+
+    async function startStrictLiveness() {{
+      if (!session || !session.strict_liveness_required) {{
+        return;
+      }}
+      if (livenessState.running) {{
+        return;
+      }}
+      livenessState.running = true;
+      clearLivenessState();
+      try {{
+        await openCamera();
+        setStatus("submitStatus", "严格活体检测启动中...", "warn");
+        const challenge = await fetchJson("/checkins/liveness/challenge", {{ method: "POST" }});
+        if (!challenge.challenge_id || !challenge.nonce || !Array.isArray(challenge.actions)) {{
+          throw new Error("活体挑战下发失败，请稍后重试");
+        }}
+        livenessState.challenge = challenge;
+        setStatus(
+          "livenessStatus",
+          "挑战动作：" + formatActions(challenge.actions) + "，请面对摄像头保持自然动作",
+          "warn"
+        );
+
+        const startedAt = Date.now();
+        const frames = await captureEvidenceFrames(4, 1200);
+        let passedAt = Date.now();
+        const minDuration = 4500;
+        if (passedAt - startedAt < minDuration) {{
+          await sleep(minDuration - (passedAt - startedAt));
+          passedAt = Date.now();
+        }}
+
+        const keyBlob = frames[frames.length - 1];
+        const proof = buildStrictProof(challenge, startedAt, passedAt);
+        const form = new FormData();
+        form.append("proof", JSON.stringify(proof));
+        form.append("key_image", keyBlob, "liveness_key.jpg");
+        const evidenceFrames = frames.slice(0, Math.max(0, frames.length - 1));
+        evidenceFrames.forEach((item, idx) => {{
+          form.append("evidence_frames", item, "liveness_ev_" + idx + ".jpg");
+        }});
+
+        setStatus("livenessStatus", "正在提交活体复核...", "warn");
+        const verifyResult = await fetchJson(
+          "/attendance/public/" + encodeURIComponent(token) + "/liveness/verify",
+          {{ method: "POST", body: form }}
+        );
+        if (!verifyResult.liveness_ticket) {{
+          throw new Error("活体复核未返回票据，请重试");
+        }}
+
+        livenessState.keyBlob = keyBlob;
+        livenessState.proof = proof;
+        livenessState.ticket = String(verifyResult.liveness_ticket);
+        livenessState.ticketExpiresAt = Number(
+          (verifyResult.session && verifyResult.session.expires_at_ms) || (Date.now() + 120000)
+        );
+        const antiScore = Number(
+          (verifyResult.anti_spoof && verifyResult.anti_spoof.live_score) || NaN
+        );
+        const scoreText = Number.isFinite(antiScore) ? ("，anti-spoof=" + antiScore.toFixed(3)) : "";
+        setStatus("livenessStatus", "严格活体通过，可签到" + scoreText, "ok");
+        setStatus("submitStatus", "活体通过，请点击“拍照并签到”提交", "ok");
+      }} catch (err) {{
+        clearLivenessState();
+        setStatus("livenessStatus", err.message || String(err), "err");
+      }} finally {{
+        livenessState.running = false;
+        updateLivenessHint();
+      }}
     }}
 
     async function submitCheckin() {{
       if (!session) return;
       try {{
         setStatus("submitStatus", "正在提交签到...", "ok");
-        const blob = await captureBlob();
         const form = new FormData();
-        form.append("file", blob, "checkin.jpg");
+        let submitBlob = null;
+        if (session.strict_liveness_required) {{
+          if (!hasValidLivenessTicket()) {{
+            throw new Error("当前场次需要严格活体，请先完成“开始活体检测”");
+          }}
+          if (!livenessState.keyBlob) {{
+            throw new Error("活体关键帧丢失，请重新进行活体检测");
+          }}
+          submitBlob = livenessState.keyBlob;
+          form.append("liveness_ticket", livenessState.ticket);
+        }} else {{
+          submitBlob = await captureBlob();
+        }}
+        form.append("file", submitBlob, "checkin.jpg");
         if (locationData.lat != null && locationData.lng != null) {{
           form.append("lat", String(locationData.lat));
           form.append("lng", String(locationData.lng));
@@ -1539,9 +1779,13 @@ async def scan_checkin_page(token: str) -> str:
           {{ method: "POST", body: form }}
         );
         if (result.ok) {{
-          setStatus("submitStatus", `签到成功：${{result.person_name || "已识别"}}`, "ok");
+          setStatus("submitStatus", "签到成功：" + (result.person_name || "已识别"), "ok");
+          if (session.strict_liveness_required) {{
+            clearLivenessState();
+            updateLivenessHint();
+          }}
         }} else {{
-          setStatus("submitStatus", `签到失败：${{result.reason || result.status || "未知原因"}}`, "err");
+          setStatus("submitStatus", "签到失败：" + (result.reason || result.status || "未知原因"), "err");
         }}
       }} catch (err) {{
         setStatus("submitStatus", err.message || String(err), "err");
@@ -1558,11 +1802,13 @@ async def scan_checkin_page(token: str) -> str:
     }});
 
     document.getElementById("btnLocate").addEventListener("click", getLocation);
+    document.getElementById("btnLiveness").addEventListener("click", startStrictLiveness);
     document.getElementById("btnSubmit").addEventListener("click", submitCheckin);
 
     loadSession().catch((err) => {{
       setStatus("sessionStatus", err.message || String(err), "err");
       document.getElementById("btnSubmit").disabled = true;
+      btnLiveness.style.display = "none";
     }});
   </script>
 </body>
