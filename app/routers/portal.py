@@ -1530,11 +1530,87 @@ async def scan_checkin_page(token: str) -> str:
 
   <script>
     const token = {token_json};
+    const MEDIAPIPE_VERSION = "20260413_3";
+    const LIVE_LEFT_EYE = [33, 160, 158, 133, 153, 144];
+    const LIVE_RIGHT_EYE = [362, 385, 387, 263, 373, 380];
+    const LIVE_LEFT_EYE_CORNER = 33;
+    const LIVE_RIGHT_EYE_CORNER = 263;
+    const LIVE_NOSE = 1;
+    const LIVE_UPPER_LIP = 13;
+    const LIVE_LOWER_LIP = 14;
+    const LIVE_LEFT_MOUTH_CORNER = 78;
+    const LIVE_RIGHT_MOUTH_CORNER = 308;
+
+    const LIVE_CALIBRATION_FRAMES = 18;
+    const LIVE_STEP_TIMEOUT_MS = 3200;
+    const LIVE_TOTAL_TIMEOUT_MS = 18500;
+    const LIVE_MIN_TOTAL_MS = 4800;
+    const LIVE_NEUTRAL_FRAMES = 5;
+    const LIVE_NEUTRAL_YAW_ABS = 0.05;
+    const LIVE_CLOSE_EAR_FACTOR = 0.72;
+    const LIVE_OPEN_EAR_FACTOR = 0.9;
+    const LIVE_STRICT_FREEZE_FRAMES = 24;
+    const LIVE_STRICT_MAX_MISSING_FRAMES = 16;
+    const LIVE_STRICT_TURN_MAX_MISSING_FRAMES = 36;
+    const LIVE_STRICT_TURN_MISSING_GRACE_MS = 1400;
+    const LIVE_STRICT_TURN_TIMEOUT_COMPENSATE_MAX_MS = 2200;
+    const LIVE_STRICT_FREEZE_DELTA = 0.0016;
+
     let session = null;
     let stream = null;
+    const scriptPromises = {{}};
+    let livenessLoopToken = 0;
     let locationData = {{ lat: null, lng: null }};
     const livenessState = {{
       running: false,
+      passed: false,
+      failReason: "",
+      calibrating: false,
+      calibrationFrames: 0,
+      challengeActions: [],
+      challengeIndex: 0,
+      completedActions: [],
+      totalStartedAt: 0,
+      stepStartedAt: 0,
+      waitingNeutral: false,
+      neutralFrames: 0,
+      stepData: {{}},
+      blinkCount: 0,
+      earBaseline: 0,
+      earSampleCount: 0,
+      yawBaseline: 0,
+      yawSampleCount: 0,
+      mouthBaseline: 0,
+      mouthSampleCount: 0,
+      faceScaleBaseline: 0,
+      faceScaleSampleCount: 0,
+      currentEar: 0,
+      currentYaw: 0,
+      currentMouth: 0,
+      currentScale: 0,
+      challengeId: "",
+      challengeNonce: "",
+      challengeExpiresAt: 0,
+      missingFrames: 0,
+      missingSinceAt: 0,
+      missingActionAtStart: "",
+      lastFaceDetectedAt: 0,
+      motionAccumulator: 0,
+      motionSamples: 0,
+      freezeRun: 0,
+      maxFreezeRun: 0,
+      lastNoseX: null,
+      lastNoseY: null,
+      lastYaw: null,
+      yawMin: null,
+      yawMax: null,
+      mouthPeak: 0,
+      scalePeak: 0,
+      turnLeftSign: 1,
+      turnActionCount: 0,
+      turnDirectionCalibrated: false,
+      engineReady: false,
+      engine: null,
       ticket: "",
       ticketExpiresAt: 0,
       keyBlob: null,
@@ -1577,11 +1653,626 @@ async def scan_checkin_page(token: str) -> str:
       return arr.map((item) => names[item] || item).join(" -> ");
     }}
 
+    function actionName(action) {{
+      const names = {{
+        blink: "眨眼",
+        turn_left: "向左转头",
+        turn_right: "向右转头",
+        mouth_open: "张嘴",
+        move_closer: "靠近镜头",
+      }};
+      return names[action] || String(action || "-");
+    }}
+
+    function actionPrompt(action) {{
+      const names = {{
+        blink: "请快速眨眼一次",
+        turn_left: "请向你自己的左侧转头",
+        turn_right: "请向你自己的右侧转头",
+        mouth_open: "请张嘴后再闭合",
+        move_closer: "请向前靠近镜头一点",
+      }};
+      return names[action] || ("请完成动作: " + actionName(action));
+    }}
+
+    function isTurnAction(action) {{
+      return action === "turn_left" || action === "turn_right";
+    }}
+
+    function loadScriptOnce(src) {{
+      if (scriptPromises[src]) return scriptPromises[src];
+      scriptPromises[src] = new Promise((resolve, reject) => {{
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("活体模块加载失败: " + src));
+        document.head.appendChild(script);
+      }});
+      return scriptPromises[src];
+    }}
+
+    function mediapipeBaseUrl() {{
+      return "/static/mediapipe";
+    }}
+
+    async function ensureMediapipeLoaded() {{
+      if (typeof FaceMesh === "function") return;
+      const base = mediapipeBaseUrl();
+      await loadScriptOnce(base + "/camera_utils/camera_utils.js?v=" + MEDIAPIPE_VERSION);
+      await loadScriptOnce(base + "/face_mesh/face_mesh.js?v=" + MEDIAPIPE_VERSION);
+      if (typeof FaceMesh !== "function") {{
+        throw new Error("活体模块加载失败，请刷新页面后重试");
+      }}
+    }}
+
+    async function ensureLivenessEngine() {{
+      await ensureMediapipeLoaded();
+      if (livenessState.engineReady && livenessState.engine) return;
+      const base = mediapipeBaseUrl();
+      const mesh = new FaceMesh({{
+        locateFile: (file) => {{
+          let resolved = String(file || "");
+          if (resolved.includes("simd_wasm_bin")) {{
+            resolved = resolved.replace("simd_wasm_bin", "wasm_bin");
+          }}
+          return base + "/face_mesh/" + resolved + "?v=" + MEDIAPIPE_VERSION;
+        }},
+      }});
+      mesh.setOptions({{
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      }});
+      mesh.onResults(onLivenessResults);
+      livenessState.engine = mesh;
+      livenessState.engineReady = true;
+    }}
+
+    function resetLivenessMotionState() {{
+      livenessState.passed = false;
+      livenessState.failReason = "";
+      livenessState.calibrating = false;
+      livenessState.calibrationFrames = 0;
+      livenessState.challengeActions = [];
+      livenessState.challengeIndex = 0;
+      livenessState.completedActions = [];
+      livenessState.totalStartedAt = 0;
+      livenessState.stepStartedAt = 0;
+      livenessState.waitingNeutral = false;
+      livenessState.neutralFrames = 0;
+      livenessState.stepData = {{}};
+      livenessState.blinkCount = 0;
+      livenessState.earBaseline = 0;
+      livenessState.earSampleCount = 0;
+      livenessState.yawBaseline = 0;
+      livenessState.yawSampleCount = 0;
+      livenessState.mouthBaseline = 0;
+      livenessState.mouthSampleCount = 0;
+      livenessState.faceScaleBaseline = 0;
+      livenessState.faceScaleSampleCount = 0;
+      livenessState.currentEar = 0;
+      livenessState.currentYaw = 0;
+      livenessState.currentMouth = 0;
+      livenessState.currentScale = 0;
+      livenessState.challengeId = "";
+      livenessState.challengeNonce = "";
+      livenessState.challengeExpiresAt = 0;
+      livenessState.missingFrames = 0;
+      livenessState.missingSinceAt = 0;
+      livenessState.missingActionAtStart = "";
+      livenessState.lastFaceDetectedAt = 0;
+      livenessState.motionAccumulator = 0;
+      livenessState.motionSamples = 0;
+      livenessState.freezeRun = 0;
+      livenessState.maxFreezeRun = 0;
+      livenessState.lastNoseX = null;
+      livenessState.lastNoseY = null;
+      livenessState.lastYaw = null;
+      livenessState.yawMin = null;
+      livenessState.yawMax = null;
+      livenessState.mouthPeak = 0;
+      livenessState.scalePeak = 0;
+      livenessState.turnLeftSign = 1;
+      livenessState.turnActionCount = 0;
+      livenessState.turnDirectionCalibrated = false;
+    }}
+
+    function liveDistance(a, b) {{
+      if (!a || !b) return 0;
+      const dx = Number(a.x || 0) - Number(b.x || 0);
+      const dy = Number(a.y || 0) - Number(b.y || 0);
+      return Math.sqrt(dx * dx + dy * dy);
+    }}
+
+    function computeEar(landmarks, indices) {{
+      const p1 = landmarks[indices[0]];
+      const p2 = landmarks[indices[1]];
+      const p3 = landmarks[indices[2]];
+      const p4 = landmarks[indices[3]];
+      const p5 = landmarks[indices[4]];
+      const p6 = landmarks[indices[5]];
+      const horizontal = liveDistance(p1, p4) || 1e-6;
+      return (liveDistance(p2, p6) + liveDistance(p3, p5)) / (2 * horizontal);
+    }}
+
+    function computeMouthOpenRatio(landmarks) {{
+      const upper = landmarks[LIVE_UPPER_LIP];
+      const lower = landmarks[LIVE_LOWER_LIP];
+      const leftCorner = landmarks[LIVE_LEFT_MOUTH_CORNER];
+      const rightCorner = landmarks[LIVE_RIGHT_MOUTH_CORNER];
+      const mouthWidth = liveDistance(leftCorner, rightCorner) || 1e-6;
+      return liveDistance(upper, lower) / mouthWidth;
+    }}
+
+    function accumulateBaseline(prefix, value, minValue, maxValue, warmupSamples = 45, alpha = 0.02) {{
+      if (!(value > minValue && value < maxValue)) return;
+      const baselineKey = prefix + "Baseline";
+      const sampleKey = prefix + "SampleCount";
+      if (livenessState[baselineKey] <= 0) {{
+        livenessState[baselineKey] = value;
+      }} else if (livenessState[sampleKey] < warmupSamples) {{
+        livenessState[baselineKey] = (livenessState[baselineKey] * livenessState[sampleKey] + value) / (livenessState[sampleKey] + 1);
+      }} else {{
+        livenessState[baselineKey] = livenessState[baselineKey] * (1 - alpha) + value * alpha;
+      }}
+      livenessState[sampleKey] += 1;
+    }}
+
+    function updateStrictMotionMetrics(payload) {{
+      const nose = payload.nose;
+      const yawDelta = payload.yawDelta;
+      const mouthRatio = payload.mouthRatio;
+      const faceScale = payload.faceScale;
+      if (!nose) return;
+
+      if (livenessState.yawMin == null || yawDelta < livenessState.yawMin) {{
+        livenessState.yawMin = yawDelta;
+      }}
+      if (livenessState.yawMax == null || yawDelta > livenessState.yawMax) {{
+        livenessState.yawMax = yawDelta;
+      }}
+      if (mouthRatio > livenessState.mouthPeak) {{
+        livenessState.mouthPeak = mouthRatio;
+      }}
+      if (faceScale > livenessState.scalePeak) {{
+        livenessState.scalePeak = faceScale;
+      }}
+
+      if (Number.isFinite(livenessState.lastNoseX) && Number.isFinite(livenessState.lastNoseY)) {{
+        const dx = Math.abs((nose.x || 0) - livenessState.lastNoseX);
+        const dy = Math.abs((nose.y || 0) - livenessState.lastNoseY);
+        const yawDiff = livenessState.lastYaw == null ? 0 : Math.abs(yawDelta - livenessState.lastYaw);
+        const delta = dx + dy + yawDiff * 0.5;
+        livenessState.motionAccumulator += delta;
+        livenessState.motionSamples += 1;
+        if (delta < LIVE_STRICT_FREEZE_DELTA) {{
+          livenessState.freezeRun += 1;
+        }} else {{
+          livenessState.freezeRun = 0;
+        }}
+        if (livenessState.freezeRun > livenessState.maxFreezeRun) {{
+          livenessState.maxFreezeRun = livenessState.freezeRun;
+        }}
+      }}
+
+      livenessState.lastNoseX = nose.x || 0;
+      livenessState.lastNoseY = nose.y || 0;
+      livenessState.lastYaw = yawDelta;
+    }}
+
+    function buildLivenessProof(durationMs) {{
+      const yawSpan = (livenessState.yawMax != null && livenessState.yawMin != null)
+        ? livenessState.yawMax - livenessState.yawMin
+        : 0;
+      const mouthPeakGain = livenessState.mouthPeak - (livenessState.mouthBaseline || 0);
+      const scalePeakGain = livenessState.scalePeak - (livenessState.faceScaleBaseline || 0);
+      const motionScore = livenessState.motionSamples > 0
+        ? livenessState.motionAccumulator / livenessState.motionSamples
+        : 0;
+      return {{
+        mode: "strict",
+        challenge_id: livenessState.challengeId,
+        nonce: livenessState.challengeNonce,
+        actions: livenessState.completedActions.slice(),
+        started_at_ms: livenessState.totalStartedAt,
+        passed_at_ms: Date.now(),
+        duration_ms: durationMs,
+        metrics: {{
+          motion_score: Number(motionScore.toFixed(6)),
+          missing_frames: livenessState.missingFrames,
+          max_freeze_run: livenessState.maxFreezeRun,
+          blink_count: livenessState.blinkCount,
+          yaw_span: Number(yawSpan.toFixed(6)),
+          mouth_peak_gain: Number(mouthPeakGain.toFixed(6)),
+          scale_peak_gain: Number(scalePeakGain.toFixed(6)),
+        }},
+      }};
+    }}
+
+    function isNeutralPose(yawDelta, mouthRatio) {{
+      const baseMouth = livenessState.mouthBaseline > 0 ? livenessState.mouthBaseline : 0.04;
+      const mouthLimit = Math.max(baseMouth * 1.22, baseMouth + 0.015, 0.07);
+      return Math.abs(yawDelta) <= LIVE_NEUTRAL_YAW_ABS && mouthRatio <= mouthLimit;
+    }}
+
+    function failLiveness(reason) {{
+      livenessState.running = false;
+      livenessState.passed = false;
+      livenessState.failReason = reason || "活体检测失败";
+      livenessState.proof = null;
+      setStatus("livenessStatus", livenessState.failReason, "err");
+    }}
+
+    function handleCurrentChallengeStep(actionKey, metrics) {{
+      const stepData = livenessState.stepData || {{}};
+      const baselineEar = livenessState.earBaseline > 0 ? livenessState.earBaseline : 0.26;
+      const closeThreshold = baselineEar * LIVE_CLOSE_EAR_FACTOR;
+      const openThreshold = baselineEar * LIVE_OPEN_EAR_FACTOR;
+
+      if (actionKey === "blink") {{
+        stepData.minEar = stepData.minEar == null ? metrics.ear : Math.min(stepData.minEar, metrics.ear);
+        if (metrics.ear < closeThreshold) {{
+          stepData.closedFrames = (stepData.closedFrames || 0) + 1;
+        }}
+        if ((stepData.closedFrames || 0) >= 2) {{
+          stepData.closed = true;
+        }}
+        const depth = baselineEar - (stepData.minEar == null ? baselineEar : stepData.minEar);
+        if (stepData.closed && metrics.ear > openThreshold && depth > Math.max(0.025, baselineEar * 0.16)) {{
+          livenessState.blinkCount += 1;
+          livenessState.stepData = {{}};
+          return true;
+        }}
+      }} else if (actionKey === "turn_left") {{
+        const threshold = Math.max(0.10, Math.abs(livenessState.yawBaseline) * 0.25 + 0.09);
+        const leftSign = livenessState.turnLeftSign >= 0 ? 1 : -1;
+        const expectedSign = leftSign;
+        const directHit = metrics.yawDelta * expectedSign > threshold;
+        const oppositeHit = metrics.yawDelta * -expectedSign > threshold;
+        if (directHit) {{
+          stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+          stepData.oppositeHoldFrames = 0;
+        }} else if (oppositeHit) {{
+          stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = (stepData.oppositeHoldFrames || 0) + 1;
+        }} else {{
+          stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = 0;
+        }}
+        if ((stepData.holdFrames || 0) >= 2) {{
+          livenessState.turnActionCount += 1;
+          livenessState.stepData = {{}};
+          return true;
+        }}
+        const canAutoFlip = !livenessState.turnDirectionCalibrated && livenessState.turnActionCount === 0;
+        if (canAutoFlip && (stepData.oppositeHoldFrames || 0) >= 3) {{
+          livenessState.turnLeftSign = -leftSign;
+          livenessState.turnDirectionCalibrated = true;
+          livenessState.turnActionCount += 1;
+          livenessState.stepData = {{}};
+          return true;
+        }}
+      }} else if (actionKey === "turn_right") {{
+        const threshold = Math.max(0.10, Math.abs(livenessState.yawBaseline) * 0.25 + 0.09);
+        const leftSign = livenessState.turnLeftSign >= 0 ? 1 : -1;
+        const expectedSign = -leftSign;
+        const directHit = metrics.yawDelta * expectedSign > threshold;
+        const oppositeHit = metrics.yawDelta * -expectedSign > threshold;
+        if (directHit) {{
+          stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+          stepData.oppositeHoldFrames = 0;
+        }} else if (oppositeHit) {{
+          stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = (stepData.oppositeHoldFrames || 0) + 1;
+        }} else {{
+          stepData.holdFrames = 0;
+          stepData.oppositeHoldFrames = 0;
+        }}
+        if ((stepData.holdFrames || 0) >= 2) {{
+          livenessState.turnActionCount += 1;
+          livenessState.stepData = {{}};
+          return true;
+        }}
+        const canAutoFlip = !livenessState.turnDirectionCalibrated && livenessState.turnActionCount === 0;
+        if (canAutoFlip && (stepData.oppositeHoldFrames || 0) >= 3) {{
+          livenessState.turnLeftSign = -leftSign;
+          livenessState.turnDirectionCalibrated = true;
+          livenessState.turnActionCount += 1;
+          livenessState.stepData = {{}};
+          return true;
+        }}
+      }} else if (actionKey === "mouth_open") {{
+        const baseMouth = livenessState.mouthBaseline > 0 ? livenessState.mouthBaseline : 0.045;
+        const openThresholdMouth = Math.max(baseMouth * 1.45, baseMouth + 0.022, 0.072);
+        const closeThresholdMouth = Math.max(baseMouth * 1.16, baseMouth + 0.01, 0.055);
+        stepData.peakMouth = stepData.peakMouth == null ? metrics.mouth : Math.max(stepData.peakMouth, metrics.mouth);
+        if (metrics.mouth > openThresholdMouth) {{
+          stepData.openFrames = (stepData.openFrames || 0) + 1;
+        }}
+        if ((stepData.openFrames || 0) >= 2) {{
+          stepData.opened = true;
+        }}
+        const peakGain = (stepData.peakMouth == null ? baseMouth : stepData.peakMouth) - baseMouth;
+        if (stepData.opened && metrics.mouth < closeThresholdMouth && peakGain > Math.max(0.018, baseMouth * 0.35)) {{
+          livenessState.stepData = {{}};
+          return true;
+        }}
+      }} else if (actionKey === "move_closer") {{
+        const baseScale = livenessState.faceScaleBaseline > 0 ? livenessState.faceScaleBaseline : metrics.faceScale;
+        const targetScale = Math.max(baseScale * 1.09, baseScale + 0.008);
+        if (metrics.faceScale > targetScale) {{
+          stepData.holdFrames = (stepData.holdFrames || 0) + 1;
+        }} else {{
+          stepData.holdFrames = Math.max(0, (stepData.holdFrames || 0) - 1);
+        }}
+        if ((stepData.holdFrames || 0) >= 2) {{
+          livenessState.stepData = {{}};
+          return true;
+        }}
+      }}
+      livenessState.stepData = stepData;
+      return false;
+    }}
+
+    function onLivenessResults(results) {{
+      if (!livenessState.running) return;
+      const nowMs = Date.now();
+      if (livenessState.challengeExpiresAt > 0 && nowMs > livenessState.challengeExpiresAt) {{
+        failLiveness("严格活体挑战已过期，请重新开始");
+        return;
+      }}
+
+      const activeAction = livenessState.challengeActions[livenessState.challengeIndex] || "";
+      const landmarks = results && results.multiFaceLandmarks && results.multiFaceLandmarks[0];
+      if (!landmarks) {{
+        livenessState.missingFrames += 1;
+        if (!livenessState.missingSinceAt) {{
+          livenessState.missingSinceAt = nowMs;
+          livenessState.missingActionAtStart = activeAction;
+        }}
+        const missingAction = livenessState.missingActionAtStart || activeAction;
+        const missingOnTurn = isTurnAction(missingAction);
+        const withinTurnGrace = missingOnTurn
+          && livenessState.lastFaceDetectedAt > 0
+          && (nowMs - livenessState.lastFaceDetectedAt) <= LIVE_STRICT_TURN_MISSING_GRACE_MS;
+        const missingLimit = missingOnTurn ? LIVE_STRICT_TURN_MAX_MISSING_FRAMES : LIVE_STRICT_MAX_MISSING_FRAMES;
+        if (!livenessState.calibrating && !withinTurnGrace && livenessState.missingFrames > missingLimit) {{
+          failLiveness(missingOnTurn ? "转头过程中人脸跟踪中断过久，请减小转头幅度后重试" : "未检测到稳定人脸，请正对镜头后重试");
+        }}
+        return;
+      }}
+
+      if (livenessState.missingSinceAt > 0) {{
+        const lostMs = Math.max(0, nowMs - livenessState.missingSinceAt);
+        const missingAction = livenessState.missingActionAtStart || activeAction;
+        if (!livenessState.calibrating && isTurnAction(missingAction) && lostMs > 0) {{
+          const compensateMs = Math.min(lostMs, LIVE_STRICT_TURN_TIMEOUT_COMPENSATE_MAX_MS);
+          if (livenessState.stepStartedAt > 0) {{
+            livenessState.stepStartedAt += compensateMs;
+          }}
+          if (livenessState.totalStartedAt > 0) {{
+            livenessState.totalStartedAt += compensateMs;
+          }}
+        }}
+        livenessState.missingSinceAt = 0;
+        livenessState.missingActionAtStart = "";
+      }}
+
+      livenessState.lastFaceDetectedAt = nowMs;
+      livenessState.missingFrames = Math.max(0, livenessState.missingFrames - 1);
+
+      const leftEar = computeEar(landmarks, LIVE_LEFT_EYE);
+      const rightEar = computeEar(landmarks, LIVE_RIGHT_EYE);
+      const avgEar = (leftEar + rightEar) / 2;
+      livenessState.currentEar = avgEar;
+      accumulateBaseline("ear", avgEar, 0.12, 0.5);
+
+      const leftEye = landmarks[LIVE_LEFT_EYE_CORNER];
+      const rightEye = landmarks[LIVE_RIGHT_EYE_CORNER];
+      const nose = landmarks[LIVE_NOSE];
+      const eyeWidth = Math.abs((rightEye && rightEye.x || 0) - (leftEye && leftEye.x || 0)) || 1e-6;
+      const centerX = ((leftEye && leftEye.x || 0) + (rightEye && rightEye.x || 0)) / 2;
+      const yawRatio = ((nose && nose.x || 0) - centerX) / eyeWidth;
+      if (livenessState.yawSampleCount === 0 && livenessState.yawBaseline === 0) {{
+        livenessState.yawBaseline = yawRatio;
+      }}
+      const yawGap = Math.abs(yawRatio - livenessState.yawBaseline);
+      if (yawGap < 0.1 || livenessState.yawSampleCount < 14) {{
+        accumulateBaseline("yaw", yawRatio, -0.45, 0.45, 45, 0.015);
+      }}
+      const yawDelta = yawRatio - (livenessState.yawBaseline || 0);
+      livenessState.currentYaw = yawDelta;
+
+      const mouthRatio = computeMouthOpenRatio(landmarks);
+      if (livenessState.mouthSampleCount === 0 && livenessState.mouthBaseline === 0) {{
+        livenessState.mouthBaseline = mouthRatio;
+      }}
+      const mouthUpdateLimit = Math.max((livenessState.mouthBaseline || 0.04) * 1.35, 0.12);
+      if (mouthRatio > 0 && mouthRatio < mouthUpdateLimit) {{
+        accumulateBaseline("mouth", mouthRatio, 0.01, 0.3);
+      }}
+      livenessState.currentMouth = mouthRatio;
+
+      if (eyeWidth > 0.03 && eyeWidth < 0.5 && Math.abs(yawDelta) < 0.2) {{
+        accumulateBaseline("faceScale", eyeWidth, 0.03, 0.5, 50, 0.015);
+      }}
+      livenessState.currentScale = eyeWidth;
+      updateStrictMotionMetrics({{
+        nose: nose,
+        yawDelta: yawDelta,
+        mouthRatio: mouthRatio,
+        faceScale: eyeWidth,
+      }});
+
+      if (!livenessState.calibrating && livenessState.freezeRun >= LIVE_STRICT_FREEZE_FRAMES) {{
+        failLiveness("检测到连续静止画面，请重新进行活体动作");
+        return;
+      }}
+
+      if (livenessState.calibrating) {{
+        const baselineReady =
+          livenessState.earSampleCount >= 6
+          && livenessState.yawSampleCount >= 6
+          && livenessState.mouthSampleCount >= 6
+          && livenessState.faceScaleSampleCount >= 6;
+        if (baselineReady) {{
+          livenessState.calibrationFrames += 1;
+        }}
+        if (livenessState.calibrationFrames >= LIVE_CALIBRATION_FRAMES) {{
+          livenessState.calibrating = false;
+          livenessState.totalStartedAt = Date.now();
+          livenessState.stepStartedAt = livenessState.totalStartedAt;
+          livenessState.stepData = {{}};
+          setStatus("livenessStatus", "请按顺序完成动作挑战：" + formatActions(livenessState.challengeActions), "warn");
+        }}
+        return;
+      }}
+
+      if (!livenessState.totalStartedAt) {{
+        livenessState.totalStartedAt = Date.now();
+      }}
+      if (!livenessState.stepStartedAt) {{
+        livenessState.stepStartedAt = Date.now();
+      }}
+
+      const now = Date.now();
+      if (now - livenessState.totalStartedAt > LIVE_TOTAL_TIMEOUT_MS) {{
+        failLiveness("动作挑战超时，请重新开始");
+        return;
+      }}
+      if (now - livenessState.stepStartedAt > LIVE_STEP_TIMEOUT_MS) {{
+        failLiveness("当前动作超时，请重新开始");
+        return;
+      }}
+
+      if (livenessState.waitingNeutral) {{
+        if (isNeutralPose(yawDelta, mouthRatio)) {{
+          livenessState.neutralFrames += 1;
+          if (livenessState.neutralFrames >= LIVE_NEUTRAL_FRAMES) {{
+            livenessState.waitingNeutral = false;
+            livenessState.neutralFrames = 0;
+            livenessState.stepData = {{}};
+            livenessState.stepStartedAt = Date.now();
+          }}
+        }} else {{
+          livenessState.neutralFrames = 0;
+        }}
+        return;
+      }}
+
+      const currentAction = livenessState.challengeActions[livenessState.challengeIndex];
+      if (!currentAction) {{
+        failLiveness("动作挑战状态异常，请重试");
+        return;
+      }}
+
+      const completed = handleCurrentChallengeStep(currentAction, {{
+        ear: avgEar,
+        yawDelta: yawDelta,
+        mouth: mouthRatio,
+        faceScale: eyeWidth,
+      }});
+      if (!completed) return;
+
+      livenessState.completedActions.push(currentAction);
+      livenessState.challengeIndex += 1;
+      livenessState.stepStartedAt = Date.now();
+      if (livenessState.challengeIndex >= livenessState.challengeActions.length) {{
+        const duration = Date.now() - livenessState.totalStartedAt;
+        if (duration < LIVE_MIN_TOTAL_MS) {{
+          failLiveness("动作完成过快，请按提示重新检测");
+          return;
+        }}
+        livenessState.proof = buildLivenessProof(duration);
+        if (!livenessState.proof || !livenessState.proof.challenge_id || !livenessState.proof.nonce) {{
+          failLiveness("严格活体证明生成失败，请重试");
+          return;
+        }}
+        livenessState.running = false;
+        livenessState.passed = true;
+        livenessState.failReason = "";
+        setStatus("livenessStatus", "动作挑战已完成，正在采集活体证据帧...", "ok");
+      }} else {{
+        livenessState.waitingNeutral = true;
+        livenessState.neutralFrames = 0;
+        setStatus(
+          "livenessStatus",
+          "已完成 " + livenessState.completedActions.length + "/" + livenessState.challengeActions.length
+            + "，下一步：" + actionPrompt(livenessState.challengeActions[livenessState.challengeIndex]),
+          "warn"
+        );
+      }}
+    }}
+
+    async function runLivenessLoop(tokenValue) {{
+      if (!livenessState.running || tokenValue !== livenessLoopToken) return;
+      if (!livenessState.engine || !stream || video.readyState < 2) {{
+        requestAnimationFrame(() => runLivenessLoop(tokenValue));
+        return;
+      }}
+      try {{
+        await livenessState.engine.send({{ image: video }});
+      }} catch (err) {{
+        failLiveness("活体引擎运行失败，请刷新后重试");
+        return;
+      }}
+      if (livenessState.running && tokenValue === livenessLoopToken) {{
+        requestAnimationFrame(() => runLivenessLoop(tokenValue));
+      }}
+    }}
+
+    async function runStrictActionChallenge(challenge) {{
+      await ensureLivenessEngine();
+      resetLivenessMotionState();
+      livenessState.challengeActions = Array.isArray(challenge.actions) ? challenge.actions.slice() : [];
+      livenessState.challengeId = String(challenge.challenge_id || "");
+      livenessState.challengeNonce = String(challenge.nonce || "");
+      livenessState.challengeExpiresAt = Number(challenge.expires_at_ms || 0);
+      if (!livenessState.challengeActions.length) {{
+        throw new Error("动作挑战为空，请稍后重试");
+      }}
+      livenessState.calibrating = true;
+      livenessState.calibrationFrames = 0;
+      livenessState.challengeIndex = 0;
+      livenessState.completedActions = [];
+      livenessState.totalStartedAt = 0;
+      livenessState.stepStartedAt = 0;
+      livenessState.waitingNeutral = false;
+      livenessState.neutralFrames = 0;
+      livenessState.stepData = {{}};
+      livenessState.running = true;
+      setStatus(
+        "livenessStatus",
+        "挑战动作：" + formatActions(livenessState.challengeActions) + "。请按顺序完成每个动作。",
+        "warn"
+      );
+      livenessLoopToken += 1;
+      const currentToken = livenessLoopToken;
+      runLivenessLoop(currentToken);
+      const waitDeadline = Date.now() + LIVE_TOTAL_TIMEOUT_MS + 10000;
+      while (livenessState.running && Date.now() < waitDeadline) {{
+        await sleep(120);
+      }}
+      if (livenessState.running) {{
+        livenessState.running = false;
+        throw new Error("动作挑战超时，请重试");
+      }}
+      if (!livenessState.passed || !livenessState.proof) {{
+        throw new Error(livenessState.failReason || "动作挑战未通过");
+      }}
+      return livenessState.proof;
+    }}
+
     function hasValidLivenessTicket() {{
       return !!livenessState.ticket && Date.now() < Number(livenessState.ticketExpiresAt || 0) - 2000;
     }}
 
     function clearLivenessState() {{
+      livenessState.running = false;
+      livenessLoopToken += 1;
+      resetLivenessMotionState();
       livenessState.ticket = "";
       livenessState.ticketExpiresAt = 0;
       livenessState.keyBlob = null;
@@ -1739,7 +2430,6 @@ async def scan_checkin_page(token: str) -> str:
       if (livenessState.running) {{
         return;
       }}
-      livenessState.running = true;
       clearLivenessState();
       try {{
         await openCamera();
@@ -1755,15 +2445,80 @@ async def scan_checkin_page(token: str) -> str:
           "warn"
         );
 
+        if (session.strict_liveness_full_actions) {{
+          const proofFromActions = await runStrictActionChallenge(challenge);
+          const strictFrames = await captureEvidenceFrames(4, 450);
+          if (!strictFrames.length) {{
+            throw new Error("活体证据采集失败，请重试");
+          }}
+          const keyBlob = strictFrames[strictFrames.length - 1];
+          const strictForm = new FormData();
+          strictForm.append("proof", JSON.stringify(proofFromActions));
+          strictForm.append("key_image", keyBlob, "liveness_key.jpg");
+          const strictEvidence = strictFrames.slice(0, Math.max(0, strictFrames.length - 1));
+          strictEvidence.forEach((item, idx) => {{
+            strictForm.append("evidence_frames", item, "liveness_ev_" + idx + ".jpg");
+          }});
+          setStatus("livenessStatus", "正在提交活体复核...", "warn");
+          const strictVerify = await fetchJson(
+            "/attendance/public/" + encodeURIComponent(token) + "/liveness/verify",
+            {{ method: "POST", body: strictForm }}
+          );
+          if (!strictVerify.liveness_ticket) {{
+            throw new Error("活体复核未返回票据，请重试");
+          }}
+          livenessState.keyBlob = keyBlob;
+          livenessState.proof = proofFromActions;
+          livenessState.ticket = String(strictVerify.liveness_ticket);
+          livenessState.ticketExpiresAt = Number(
+            (strictVerify.session && strictVerify.session.expires_at_ms) || (Date.now() + 120000)
+          );
+          const strictAntiScore = Number(
+            (strictVerify.anti_spoof && strictVerify.anti_spoof.live_score) || NaN
+          );
+          const strictScoreText = Number.isFinite(strictAntiScore) ? ("，anti-spoof=" + strictAntiScore.toFixed(3)) : "";
+          setStatus("livenessStatus", "严格活体通过，可签到" + strictScoreText, "ok");
+          setStatus("submitStatus", "活体通过，请点击“拍照并签到”提交", "ok");
+          return;
+        }}
+
         const startedAt = Date.now();
-        const frames = await captureEvidenceFrames(4, 1200);
+        let frames = [];
+        if (session.strict_liveness_full_actions) {{
+          const actions = Array.isArray(challenge.actions) ? challenge.actions : [];
+          if (!actions.length) {{
+            throw new Error("动作挑战为空，请稍后重试");
+          }}
+          for (let i = 0; i < actions.length; i += 1) {{
+            const action = actions[i];
+            const prompt = "请先完成动作 " + (i + 1) + "/" + actions.length + "：" + actionName(action) + "，完成后点击确定继续。";
+            setStatus("livenessStatus", prompt, "warn");
+            const ok = window.confirm(prompt);
+            if (!ok) {{
+              throw new Error("已取消严格活体检测");
+            }}
+            await sleep(280);
+            const frame = await captureBlob();
+            frames.push(frame);
+            setStatus("livenessStatus", "已记录动作 " + (i + 1) + "/" + actions.length + "：" + actionName(action), "warn");
+          }}
+          await sleep(240);
+          frames.push(await captureBlob());
+        }} else {{
+          frames = await captureEvidenceFrames(4, 1200);
+        }}
         let passedAt = Date.now();
-        const minDuration = 4500;
+        const minDuration = session.strict_liveness_full_actions
+          ? Math.max(5500, (Array.isArray(challenge.actions) ? challenge.actions.length : 5) * 900)
+          : 4500;
         if (passedAt - startedAt < minDuration) {{
           await sleep(minDuration - (passedAt - startedAt));
           passedAt = Date.now();
         }}
 
+        if (!frames.length) {{
+          throw new Error("活体证据采集失败，请重试");
+        }}
         const keyBlob = frames[frames.length - 1];
         const proof = buildStrictProof(challenge, startedAt, passedAt);
         const form = new FormData();
