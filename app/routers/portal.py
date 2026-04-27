@@ -1541,9 +1541,9 @@ async def scan_checkin_page(token: str) -> str:
     const LIVE_LEFT_MOUTH_CORNER = 78;
     const LIVE_RIGHT_MOUTH_CORNER = 308;
 
-    const LIVE_CALIBRATION_FRAMES = 18;
-    const LIVE_STEP_TIMEOUT_MS = 3200;
-    const LIVE_TOTAL_TIMEOUT_MS = 18500;
+    const LIVE_CALIBRATION_FRAMES = 20;
+    const LIVE_STEP_TIMEOUT_MS = 9000;
+    const LIVE_TOTAL_TIMEOUT_MS = 65000;
     const LIVE_MIN_TOTAL_MS = 4800;
     const LIVE_NEUTRAL_FRAMES = 5;
     const LIVE_NEUTRAL_YAW_ABS = 0.05;
@@ -1555,6 +1555,9 @@ async def scan_checkin_page(token: str) -> str:
     const LIVE_STRICT_TURN_MISSING_GRACE_MS = 1400;
     const LIVE_STRICT_TURN_TIMEOUT_COMPENSATE_MAX_MS = 2200;
     const LIVE_STRICT_FREEZE_DELTA = 0.0016;
+    const LIVE_ENGINE_WARMUP_FRAMES = 3;
+    const LIVE_ENGINE_SEND_MAX_RETRY = 3;
+    const LIVE_ENGINE_REINIT_MAX_RETRY = 1;
 
     let session = null;
     let stream = null;
@@ -1609,6 +1612,9 @@ async def scan_checkin_page(token: str) -> str:
       turnLeftSign: 1,
       turnActionCount: 0,
       turnDirectionCalibrated: false,
+      engineSendErrorCount: 0,
+      engineReinitCount: 0,
+      engineWarmupFrames: 0,
       engineReady: false,
       engine: null,
       ticket: "",
@@ -1730,6 +1736,24 @@ async def scan_checkin_page(token: str) -> str:
       livenessState.engineReady = true;
     }}
 
+    function describeLivenessEngineError(err) {{
+      const msg = String((err && err.message) || err || "");
+      const lower = msg.toLowerCase();
+      if (!msg) {{
+        return "活体检测引擎运行失败，请刷新后重试";
+      }}
+      if (lower.includes("webassembly") || lower.includes("wasm")) {{
+        return "活体引擎加载失败（WebAssembly），请改用系统浏览器或升级浏览器后重试";
+      }}
+      if (lower.includes("memory")) {{
+        return "活体引擎可用内存不足，请关闭后台应用后重试";
+      }}
+      if (lower.includes("network") || lower.includes("fetch")) {{
+        return "活体模型资源加载失败，请检查网络后重试";
+      }}
+      return "活体检测引擎运行失败，请刷新后重试";
+    }}
+
     function resetLivenessMotionState() {{
       livenessState.passed = false;
       livenessState.failReason = "";
@@ -1777,6 +1801,9 @@ async def scan_checkin_page(token: str) -> str:
       livenessState.turnLeftSign = 1;
       livenessState.turnActionCount = 0;
       livenessState.turnDirectionCalibrated = false;
+      livenessState.engineSendErrorCount = 0;
+      livenessState.engineReinitCount = 0;
+      livenessState.engineWarmupFrames = 0;
     }}
 
     function liveDistance(a, b) {{
@@ -2123,7 +2150,7 @@ async def scan_checkin_page(token: str) -> str:
         if (livenessState.calibrationFrames >= LIVE_CALIBRATION_FRAMES) {{
           livenessState.calibrating = false;
           livenessState.totalStartedAt = Date.now();
-          livenessState.stepStartedAt = livenessState.totalStartedAt;
+          livenessState.stepStartedAt = livenessState.totalStartedAt + 1800;
           livenessState.stepData = {{}};
           setStatus("livenessStatus", "请按顺序完成动作挑战：" + formatActions(livenessState.challengeActions), "warn");
         }}
@@ -2208,14 +2235,58 @@ async def scan_checkin_page(token: str) -> str:
 
     async function runLivenessLoop(tokenValue) {{
       if (!livenessState.running || tokenValue !== livenessLoopToken) return;
-      if (!livenessState.engine || !stream || video.readyState < 2) {{
+      if (!livenessState.engine || !stream) {{
+        requestAnimationFrame(() => runLivenessLoop(tokenValue));
+        return;
+      }}
+      if (video.readyState < 2 || (video.videoWidth || 0) <= 0 || (video.videoHeight || 0) <= 0) {{
+        livenessState.engineWarmupFrames = 0;
+        requestAnimationFrame(() => runLivenessLoop(tokenValue));
+        return;
+      }}
+      if (livenessState.engineWarmupFrames < LIVE_ENGINE_WARMUP_FRAMES) {{
+        livenessState.engineWarmupFrames += 1;
         requestAnimationFrame(() => runLivenessLoop(tokenValue));
         return;
       }}
       try {{
         await livenessState.engine.send({{ image: video }});
+        livenessState.engineSendErrorCount = 0;
       }} catch (err) {{
-        failLiveness("活体引擎运行失败，请刷新后重试");
+        livenessState.engineWarmupFrames = 0;
+        livenessState.engineSendErrorCount += 1;
+        if (livenessState.engineSendErrorCount <= LIVE_ENGINE_SEND_MAX_RETRY) {{
+          setStatus(
+            "livenessStatus",
+            "活体引擎短暂波动，正在自动恢复（" + livenessState.engineSendErrorCount + "/" + LIVE_ENGINE_SEND_MAX_RETRY + "）",
+            "warn"
+          );
+          await sleep(120 * livenessState.engineSendErrorCount);
+          if (livenessState.running && tokenValue === livenessLoopToken) {{
+            requestAnimationFrame(() => runLivenessLoop(tokenValue));
+          }}
+          return;
+        }}
+        if (livenessState.engineReinitCount < LIVE_ENGINE_REINIT_MAX_RETRY) {{
+          livenessState.engineReinitCount += 1;
+          livenessState.engineReady = false;
+          livenessState.engine = null;
+          setStatus("livenessStatus", "活体引擎正在重启，请稍候...", "warn");
+          try {{
+            await ensureLivenessEngine();
+            livenessState.engineSendErrorCount = 0;
+            livenessState.engineWarmupFrames = 0;
+            if (livenessState.running && tokenValue === livenessLoopToken) {{
+              setStatus("livenessStatus", "活体引擎恢复成功，请继续按提示完成动作", "warn");
+              requestAnimationFrame(() => runLivenessLoop(tokenValue));
+            }}
+            return;
+          }} catch (reloadErr) {{
+            failLiveness(describeLivenessEngineError(reloadErr));
+            return;
+          }}
+        }}
+        failLiveness(describeLivenessEngineError(err));
         return;
       }}
       if (livenessState.running && tokenValue === livenessLoopToken) {{
@@ -2483,34 +2554,9 @@ async def scan_checkin_page(token: str) -> str:
         }}
 
         const startedAt = Date.now();
-        let frames = [];
-        if (session.strict_liveness_full_actions) {{
-          const actions = Array.isArray(challenge.actions) ? challenge.actions : [];
-          if (!actions.length) {{
-            throw new Error("动作挑战为空，请稍后重试");
-          }}
-          for (let i = 0; i < actions.length; i += 1) {{
-            const action = actions[i];
-            const prompt = "请先完成动作 " + (i + 1) + "/" + actions.length + "：" + actionName(action) + "，完成后点击确定继续。";
-            setStatus("livenessStatus", prompt, "warn");
-            const ok = window.confirm(prompt);
-            if (!ok) {{
-              throw new Error("已取消严格活体检测");
-            }}
-            await sleep(280);
-            const frame = await captureBlob();
-            frames.push(frame);
-            setStatus("livenessStatus", "已记录动作 " + (i + 1) + "/" + actions.length + "：" + actionName(action), "warn");
-          }}
-          await sleep(240);
-          frames.push(await captureBlob());
-        }} else {{
-          frames = await captureEvidenceFrames(4, 1200);
-        }}
+        const frames = await captureEvidenceFrames(4, 1200);
         let passedAt = Date.now();
-        const minDuration = session.strict_liveness_full_actions
-          ? Math.max(5500, (Array.isArray(challenge.actions) ? challenge.actions.length : 5) * 900)
-          : 4500;
+        const minDuration = 4500;
         if (passedAt - startedAt < minDuration) {{
           await sleep(minDuration - (passedAt - startedAt));
           passedAt = Date.now();
