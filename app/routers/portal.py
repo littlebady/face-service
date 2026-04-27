@@ -2494,13 +2494,12 @@ async def scan_checkin_page(token: str) -> str:
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
         throw new Error("当前环境不支持摄像头，请使用系统浏览器打开，或部署 HTTPS 域名后再试");
       }}
-      const useLowLoad = isIOSWebkit() || isWechatBrowser();
       const constraints = {{
         video: {{
           facingMode: "user",
-          width: useLowLoad ? {{ ideal: 480, max: 640 }} : {{ ideal: 640, max: 960 }},
-          height: useLowLoad ? {{ ideal: 360, max: 480 }} : {{ ideal: 480, max: 720 }},
-          frameRate: useLowLoad ? {{ ideal: 18, max: 24 }} : {{ ideal: 24, max: 30 }},
+          width: {{ ideal: 640, max: 960 }},
+          height: {{ ideal: 480, max: 720 }},
+          frameRate: {{ ideal: 24, max: 30 }},
         }},
         audio: false,
       }};

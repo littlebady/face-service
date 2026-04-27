@@ -53,10 +53,8 @@ models/*
 *.onnx
 *.zip
 
-# Frontend binary assets (non-code)
-app/static/mediapipe/face_mesh/*.wasm
-app/static/mediapipe/face_mesh/*.data
-app/static/mediapipe/face_mesh/*.binarypb
+# Frontend binary assets (required at runtime)
+# NOTE: Mediapipe strict liveness depends on these files in deployment.
 
 # Environment variables
 .env
