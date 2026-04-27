@@ -1559,6 +1559,9 @@ async def scan_checkin_page(token: str) -> str:
     const LIVE_ENGINE_SEND_MAX_RETRY = 3;
     const LIVE_ENGINE_REINIT_MAX_RETRY = 1;
     const LIVE_ERROR_STATUS_HOLD_MS = 15000;
+    const LIVE_MOVE_CLOSER_GAIN_RATIO = 1.055;
+    const LIVE_MOVE_CLOSER_GAIN_ABS = 0.0045;
+    const LIVE_MOVE_CLOSER_HOLD_FRAMES = 2;
 
     let session = null;
     let stream = null;
@@ -2087,14 +2090,23 @@ async def scan_checkin_page(token: str) -> str:
           return true;
         }}
       }} else if (actionKey === "move_closer") {{
-        const baseScale = livenessState.faceScaleBaseline > 0 ? livenessState.faceScaleBaseline : metrics.faceScale;
-        const targetScale = Math.max(baseScale * 1.09, baseScale + 0.008);
-        if (metrics.faceScale > targetScale) {{
+        if (!(stepData.baseScale > 0)) {{
+          const baseScale = livenessState.faceScaleBaseline > 0 ? livenessState.faceScaleBaseline : metrics.faceScale;
+          stepData.baseScale = Math.max(baseScale, metrics.faceScale);
+          stepData.peakScale = metrics.faceScale;
+        }}
+        stepData.peakScale = Math.max(stepData.peakScale || 0, metrics.faceScale);
+        const targetScale = Math.max(
+          stepData.baseScale * LIVE_MOVE_CLOSER_GAIN_RATIO,
+          stepData.baseScale + LIVE_MOVE_CLOSER_GAIN_ABS
+        );
+        const closeEnough = (stepData.peakScale || 0) >= targetScale;
+        if (closeEnough && metrics.faceScale >= targetScale * 0.985) {{
           stepData.holdFrames = (stepData.holdFrames || 0) + 1;
         }} else {{
           stepData.holdFrames = Math.max(0, (stepData.holdFrames || 0) - 1);
         }}
-        if ((stepData.holdFrames || 0) >= 2) {{
+        if ((stepData.holdFrames || 0) >= LIVE_MOVE_CLOSER_HOLD_FRAMES) {{
           livenessState.stepData = {{}};
           return true;
         }}
@@ -2182,7 +2194,8 @@ async def scan_checkin_page(token: str) -> str:
       }}
       livenessState.currentMouth = mouthRatio;
 
-      if (eyeWidth > 0.03 && eyeWidth < 0.5 && Math.abs(yawDelta) < 0.2) {{
+      const inMoveCloserStep = !livenessState.calibrating && activeAction === "move_closer";
+      if (!inMoveCloserStep && eyeWidth > 0.03 && eyeWidth < 0.5 && Math.abs(yawDelta) < 0.2) {{
         accumulateBaseline("faceScale", eyeWidth, 0.03, 0.5, 50, 0.015);
       }}
       livenessState.currentScale = eyeWidth;
@@ -2616,6 +2629,7 @@ async def scan_checkin_page(token: str) -> str:
         return;
       }}
       clearLivenessState();
+      setStatus("submitStatus", "", "");
       try {{
         if (isIOSWebkit()) {{
           // iOS WebKit 对 FaceMesh 更容易触发 wasm/gpu 限制，默认走兼容模式
@@ -2629,12 +2643,13 @@ async def scan_checkin_page(token: str) -> str:
           throw new Error("当前浏览器不支持 WebGL，无法进行严格活体检测，" + openTip);
         }}
         await openCamera();
-        setStatus("submitStatus", "严格活体检测启动中...", "warn");
+        setStatus("livenessStatus", "严格活体检测启动中，请保持正对镜头...", "warn");
         const challenge = await fetchJson("/checkins/liveness/challenge", {{ method: "POST" }});
         if (!challenge.challenge_id || !challenge.nonce || !Array.isArray(challenge.actions)) {{
           throw new Error("活体挑战下发失败，请稍后重试");
         }}
         livenessState.challenge = challenge;
+        setStatus("submitStatus", "请按提示完成动作挑战", "warn");
         setStatus(
           "livenessStatus",
           "挑战动作：" + formatActions(challenge.actions) + "，请面对摄像头保持自然动作",
@@ -2724,6 +2739,7 @@ async def scan_checkin_page(token: str) -> str:
       }} catch (err) {{
         clearLivenessState();
         setLivenessErrorStatus(err.message || String(err));
+        setStatus("submitStatus", "活体检测未通过，请按提示重试", "err");
       }} finally {{
         livenessState.running = false;
         updateLivenessHint();
