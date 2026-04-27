@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>数据分析</title>
+  <style>
+    :root {
+      --bg: #f2f7ff;
+      --card: #ffffff;
+      --line: #e4ebf5;
+      --text: #162238;
+      --muted: #64748b;
+      --primary: #0f5fd7;
+      --accent: #0e1f45;
+      --ok: #147a47;
+      --err: #b42318;
+      --warn: #9a6700;
+      --chip-0: #f8f2ff;
+      --chip-1: #eef8ff;
+      --chip-2: #eefaf2;
+      --chip-3: #fff9eb;
+      --chip-4: #fff0f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 360px at 0% 0%, #dde9ff, transparent 70%),
+        radial-gradient(760px 340px at 100% 100%, #d8f1ff, transparent 68%),
+        var(--bg);
+    }
+    .page {
+      max-width: 1260px;
+      margin: 0 auto;
+      padding: 20px 18px 30px;
+    }
+    .topbar {
+      background: linear-gradient(120deg, #0f3f8f, #1f70e3);
+      color: #fff;
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      box-shadow: 0 12px 28px rgba(16, 33, 75, 0.28);
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .topbar p {
+      margin: 6px 0 0;
+      opacity: .95;
+      font-size: 14px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 13px;
+      transition: transform .12s ease, opacity .12s ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      opacity: .94;
+    }
+    button:disabled {
+      opacity: .58;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-dark { background: var(--accent); color: #fff; }
+    .btn-soft { background: #eaf1ff; color: #1b3f80; }
+    .btn-success { background: #168851; color: #fff; }
+    .btn-warning { background: #d09300; color: #fff; }
+    .btn-mini {
+      padding: 6px 8px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid #e9eef8;
+      border-radius: 14px;
+      box-shadow: 0 10px 22px rgba(15, 33, 75, 0.08);
+      padding: 14px;
+    }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    @media (max-width: 1080px) {
+      .span-3, .span-4, .span-6, .span-8, .span-12 { grid-column: span 12; }
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .metric-title {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric-val {
+      font-size: 28px;
+      margin-top: 4px;
+      font-weight: 800;
+    }
+    .line {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .line label {
+      font-size: 12px;
+      color: #314055;
+      font-weight: 700;
+    }
+    input, select {
+      border: 1px solid #d6e0ef;
+      background: #fbfdff;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 13px;
+      outline: none;
+      width: 100%;
+    }
+    input:focus, select:focus {
+      border-color: #90b4ff;
+      box-shadow: 0 0 0 3px #e7f0ff;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 980px) {
+      .row { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .row { grid-template-columns: 1fr; }
+    }
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .status {
+      margin-top: 8px;
+      min-height: 19px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .ok { color: var(--ok); }
+    .err { color: var(--err); }
+    .warn { color: var(--warn); }
+    .hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eff5ff;
+      color: #214f9b;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .cluster-chip-0 { background: var(--chip-0); color: #4a2d80; }
+    .cluster-chip-1 { background: var(--chip-1); color: #03567d; }
+    .cluster-chip-2 { background: var(--chip-2); color: #145a2b; }
+    .cluster-chip-3 { background: var(--chip-3); color: #7a4a00; }
+    .cluster-chip-4 { background: var(--chip-4); color: #7f1818; }
+    .table-wrap {
+      border: 1px solid #e2e9f5;
+      border-radius: 12px;
+      overflow: auto;
+      background: #fbfdff;
+      max-height: 630px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 1080px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px 6px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      color: #334155;
+      background: #f3f8ff;
+    }
+    td input, td select {
+      padding: 6px 7px;
+      border-radius: 8px;
+      font-size: 12px;
+      min-width: 68px;
+    }
+    .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+    }
+    .muted { color: var(--muted); }
+    .distance {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 92px;
+    }
+    .distance .bar {
+      width: 58px;
+      height: 8px;
+      border-radius: 999px;
+      background: #dbe7fb;
+      overflow: hidden;
+    }
+    .distance .fill {
+      height: 100%;
+      background: linear-gradient(90deg, #2b77e7, #1648a6);
+      border-radius: 999px;
+    }
+    .chip {
+      display: inline-block;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #edf3ff;
+      color: #2d4f8d;
+      margin-left: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="topbar">
+      <div>
+        <h1>签到数据分析中心</h1>
+        <p>加载真实签到场次，完成统计、聚类和 Excel 导出</p>
+      </div>
+      <div class="actions">
+        <button class="btn-soft" id="btnBackDashboard">返回控制台</button>
+        <button class="btn-soft" id="btnReloadData">加载真实数据</button>
+        <button class="btn-dark" id="btnLogout">退出</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card span-3">
+        <div class="metric-title">分析场次数</div>
+        <div class="metric-val" id="metricTotal">0</div>
+      </article>
+      <article class="card span-3">
+        <div class="metric-title">已聚类数量</div>
+        <div class="metric-val" id="metricClustered">0</div>
+      </article>
+      <article class="card span-3">
+        <div class="metric-title">课程覆盖数</div>
+        <div class="metric-val" id="metricCourses">0</div>
+      </article>
+      <article class="card span-3">
+        <div class="metric-title">平均签到人数</div>
+        <div class="metric-val" id="metricAvgCount">0</div>
+      </article>
+
+      <article class="card span-12">
+        <h2>聚类控制</h2>
+        <div class="row">
+          <div class="line">
+            <label for="kValue">聚类数量 K（2-12）</label>
+            <input id="kValue" type="range" min="2" max="12" step="1" value="4" />
+            <div class="muted">当前 K: <b id="kDisplay">4</b></div>
+          </div>
+          <div class="line">
+            <label for="exportCourseId">导出课程</label>
+            <select id="exportCourseId">
+              <option value="0">请选择课程</option>
+            </select>
+          </div>
+          <div class="line">
+            <label for="demoCount">示例数据条数</label>
+            <input id="demoCount" type="number" min="10" max="300" value="40" />
+          </div>
+          <div class="line">
+            <label>常用操作</label>
+            <div class="button-row">
+              <button class="btn-primary" id="btnRunCluster">运行 KMeans</button>
+              <button class="btn-success" id="btnApplyRecommendation">应用推荐课程</button>
+              <button class="btn-warning" id="btnClearCluster">清空聚类结果</button>
+              <button class="btn-soft" id="btnGenerateDemo">生成示例数据</button>
+              <button class="btn-dark" id="btnExportExcel">导出 Excel</button>
+            </div>
+          </div>
+        </div>
+        <div id="analysisStatus" class="status"></div>
+        <div class="hint">真实数据来自你发布的签到场次；聚类特征包含星期、时段、经纬度与签到人数。手工修改课程归属后再次聚类，推荐结果会更稳定。</div>
+      </article>
+
+      <article class="card span-6">
+        <h2>聚类摘要</h2>
+        <div id="clusterSummary" class="muted">尚未执行聚类</div>
+      </article>
+      <article class="card span-6">
+        <h2>数据摘要</h2>
+        <div id="dataSummary" class="muted">尚未加载数据</div>
+      </article>
+
+      <article class="card span-12">
+        <h2>签到分析明细</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>场次</th>
+                <th>标题</th>
+                <th>模式</th>
+                <th>签到人数</th>
+                <th>星期</th>
+                <th>时段</th>
+                <th>经度</th>
+                <th>纬度</th>
+                <th>课程归属</th>
+                <th>聚类距离</th>
+                <th>课程导出</th>
+              </tr>
+            </thead>
+            <tbody id="recordBody">
+              <tr><td colspan="12" class="muted">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    "use strict";
+
+    const TOKEN_KEY = "face_service_token";
+    const DEFAULT_LNG = 116.353165;
+    const DEFAULT_LAT = 40.004379;
+    const token = localStorage.getItem(TOKEN_KEY) || "";
+
+    const state = {
+      courses: [],
+      records: [],
+      clusterResult: null,
+    };
+
+    const FALLBACK_COURSES = [
+      { course_id: 1, course_name: "高等数学", course_code: "MATH101" },
+      { course_id: 2, course_name: "大学物理", course_code: "PHYS102" },
+      { course_id: 3, course_name: "程序设计", course_code: "CS103" },
+      { course_id: 4, course_name: "英语听力", course_code: "ENG104" },
+      { course_id: 5, course_name: "数据结构", course_code: "CS201" },
+      { course_id: 6, course_name: "线性代数", course_code: "MATH202" },
+    ];
+
+    const STUDENT_DB = (() => {
+      const surnames = ["赵", "钱", "孙", "李", "周", "吴", "郑", "王", "陈", "杨", "黄", "刘"];
+      const names = ["子轩", "雨桐", "宇航", "思涵", "梓涵", "明哲", "若琳", "佳宁", "文博", "晨曦", "嘉豪", "欣怡"];
+      const students = [];
+      for (let i = 1; i <= 160; i += 1) {
+        const sid = "20233" + String(10000 + i).slice(-5);
+        const fullName = surnames[i % surnames.length] + names[(i * 7) % names.length];
+        students.push({ sid, name: fullName });
+      }
+      return students;
+    })();
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function isFiniteNum(value) {
+      return Number.isFinite(Number(value));
+    }
+
+    function toNum(value, fallback = null) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function escapeHtml(value) {
+      const text = String(value == null ? "" : value);
+      return text.replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[ch]));
+    }
+
+    function setStatus(text, level = "") {
+      const el = $("analysisStatus");
+      if (!el) return;
+      el.textContent = text || "";
+      el.className = "status " + (level || "");
+    }
+
+    function authHeaders(extra) {
+      return Object.assign({}, extra || {}, { Authorization: "Bearer " + token });
+    }
+
+    async function api(path, options = {}) {
+      const opts = Object.assign({}, options);
+      opts.headers = authHeaders(opts.headers || {});
+      const resp = await fetch(path, opts);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.ok === false) {
+        throw new Error(data.detail || data.reason || "请求失败");
+      }
+      return data;
+    }
+
+    function formatDateTime(ms) {
+      if (!ms) return "-";
+      return new Date(Number(ms)).toLocaleString();
+    }
+
+    function getWeekday(dateObj) {
+      const day = dateObj.getDay();
+      return day === 0 ? 7 : day;
+    }
+
+    function getTimeSlotByClock(hour, minute) {
+      const totalMin = hour * 60 + minute;
+      if (totalMin >= 480 && totalMin < 570) return 1;
+      if (totalMin >= 590 && totalMin < 685) return 2;
+      if (totalMin >= 810 && totalMin < 905) return 3;
+      if (totalMin >= 920 && totalMin < 1015) return 4;
+      if (totalMin >= 1110 && totalMin < 1200) return 5;
+      if (totalMin >= 1230 && totalMin < 1320) return 6;
+      if (totalMin >= 1330 && totalMin < 1420) return 7;
+      return 8;
+    }
+
+    function getActiveCourses() {
+      return state.courses.length ? state.courses : FALLBACK_COURSES;
+    }
+
+    function getCourseLabel(courseId) {
+      const numeric = Number(courseId);
+      if (!numeric) return "未指定";
+      const found = getActiveCourses().find((item) => Number(item.course_id) === numeric);
+      return found ? String(found.course_name || ("课程" + numeric)) : ("课程#" + numeric);
+    }
+
+    function buildCourseOptions(selectedCourseId) {
+      const selected = Number(selectedCourseId || 0);
+      const options = ['<option value="0"' + (selected === 0 ? " selected" : "") + '>未指定</option>'];
+      for (const course of getActiveCourses()) {
+        const courseId = Number(course.course_id);
+        options.push(
+          '<option value="' + courseId + '"' + (courseId === selected ? " selected" : "") + ">" +
+          escapeHtml(course.course_name || ("课程" + courseId)) + "</option>"
+        );
+      }
+      return options.join("");
+    }
+
+    function updateExportCourseOptions() {
+      const select = $("exportCourseId");
+      const prev = Number(select.value || 0);
+      const counts = new Map();
+      for (const rec of state.records) {
+        if (rec.course_id > 0) {
+          counts.set(rec.course_id, (counts.get(rec.course_id) || 0) + 1);
+        }
+      }
+      const list = getActiveCourses();
+      const options = ['<option value="0">请选择课程</option>'];
+      for (const course of list) {
+        const cid = Number(course.course_id);
+        const count = counts.get(cid) || 0;
+        options.push(
+          '<option value="' + cid + '"' + (prev === cid ? " selected" : "") + ">" +
+          escapeHtml(course.course_name || ("课程" + cid)) + "（" + count + " 场）</option>"
+        );
+      }
+      select.innerHTML = options.join("");
+    }
+
+    function convertSessionToRecord(session, detailPayload, idx) {
+      const startTimeMs = toNum(session.start_time_ms, Date.now() + idx * 60000);
+      const dateObj = new Date(startTimeMs);
+      const detail = detailPayload || {};
+      const records = Array.isArray(detail.records) ? detail.records : [];
+      const summary = detail.summary || {};
+      const successRows = records.filter((item) => String(item.status || "") === "success");
+      const geoRows = successRows.filter((item) => isFiniteNum(item.lat) && isFiniteNum(item.lng));
+
+      let lng = toNum(session.center_lng, null);
+      let lat = toNum(session.center_lat, null);
+      if (geoRows.length) {
+        lng = geoRows.reduce((sum, row) => sum + Number(row.lng), 0) / geoRows.length;
+        lat = geoRows.reduce((sum, row) => sum + Number(row.lat), 0) / geoRows.length;
+      }
+      if (!Number.isFinite(lng)) lng = DEFAULT_LNG + ((idx % 7) - 3) * 0.0007;
+      if (!Number.isFinite(lat)) lat = DEFAULT_LAT + ((idx % 6) - 3) * 0.0006;
+
+      const strictFull = Boolean(session.strict_liveness_full_actions);
+      const strictSimple = Boolean(session.strict_liveness_required);
+      const modeLabel = strictFull ? "严格活体" : (strictSimple ? "活体" : "普通");
+      const summaryCount = toNum(summary.unique_success_count, null);
+      const fallbackCount = toNum(summary.total_records, null);
+      const attendCount = Math.max(0, toNum(summaryCount, toNum(fallbackCount, successRows.length || 0)));
+
+      return {
+        session_id: toNum(session.session_id, idx + 1),
+        time_label: formatDateTime(startTimeMs),
+        start_time_ms: startTimeMs,
+        room_id: "S" + String(session.session_id || idx + 1),
+        title: String(session.title || "未命名场次"),
+        mode_label: modeLabel,
+        attend_count: attendCount,
+        weekday: getWeekday(dateObj),
+        time_slot: getTimeSlotByClock(dateObj.getHours(), dateObj.getMinutes()),
+        lng: Number(lng),
+        lat: Number(lat),
+        course_id: toNum(session.course_id, 0),
+        cluster: -1,
+        distance_to_center: null,
+        recommended_course_id: null,
+      };
+    }
+
+    async function loadCourses() {
+      const data = await api("/attendance/courses/mine");
+      state.courses = Array.isArray(data.courses) ? data.courses : [];
+      updateExportCourseOptions();
+    }
+
+    async function loadRealData() {
+      setStatus("正在加载真实签到数据...", "warn");
+      const data = await api("/attendance/sessions?limit=200");
+      const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+      if (!sessions.length) {
+        state.records = [];
+        state.clusterResult = null;
+        renderAll();
+        setStatus("你还没有可分析的签到场次，可先发布签到或生成示例数据。", "warn");
+        return;
+      }
+
+      const detailPayloads = await Promise.all(
+        sessions.map(async (session) => {
+          try {
+            return await api("/attendance/sessions/" + Number(session.session_id) + "/records?limit=500");
+          } catch (_) {
+            return { records: [], summary: {} };
+          }
+        })
+      );
+
+      state.records = sessions
+        .map((session, idx) => convertSessionToRecord(session, detailPayloads[idx], idx))
+        .sort((a, b) => Number(a.start_time_ms) - Number(b.start_time_ms));
+      state.clusterResult = null;
+      renderAll();
+      setStatus("已加载 " + state.records.length + " 条真实场次数据。", "ok");
+    }
+
+    function buildCourseTemplates() {
+      const slots = [
+        { weekday: 1, timeSlot: 1, lngOffset: -0.004, latOffset: -0.003, baseCount: 42 },
+        { weekday: 1, timeSlot: 2, lngOffset: -0.002, latOffset: 0.001, baseCount: 38 },
+        { weekday: 2, timeSlot: 1, lngOffset: 0.000, latOffset: 0.003, baseCount: 46 },
+        { weekday: 3, timeSlot: 3, lngOffset: 0.002, latOffset: -0.002, baseCount: 35 },
+        { weekday: 4, timeSlot: 1, lngOffset: 0.004, latOffset: 0.002, baseCount: 48 },
+        { weekday: 5, timeSlot: 2, lngOffset: 0.001, latOffset: 0.004, baseCount: 41 },
+      ];
+      const courses = getActiveCourses();
+      return courses.map((course, idx) => {
+        const slot = slots[idx % slots.length];
+        return {
+          course_id: Number(course.course_id),
+          course_name: String(course.course_name || ("课程" + course.course_id)),
+          weekday: slot.weekday,
+          time_slot: slot.timeSlot,
+          lng: DEFAULT_LNG + slot.lngOffset + (idx % 3) * 0.0007,
+          lat: DEFAULT_LAT + slot.latOffset + (idx % 4) * 0.0005,
+          base_count: slot.baseCount + (idx % 5),
+        };
+      });
+    }
+
+    function buildTimeBySlot(weekday, timeSlot, weekOffset) {
+      const baseDate = new Date(2026, 0, 5); // 2026-01-05 Monday
+      const date = new Date(baseDate);
+      date.setDate(date.getDate() + weekOffset * 7);
+      const targetWeekday = weekday === 7 ? 0 : weekday;
+      const diff = (targetWeekday - date.getDay() + 7) % 7;
+      date.setDate(date.getDate() + diff);
+
+      const slotTimeMap = {
+        1: [8, 10],
+        2: [10, 5],
+        3: [13, 40],
+        4: [15, 20],
+        5: [18, 30],
+        6: [19, 0],
+        7: [20, 0],
+        8: [21, 0],
+      };
+      const pair = slotTimeMap[timeSlot] || [8, 0];
+      const minuteJitter = Math.floor(Math.random() * 16);
+      date.setHours(pair[0], pair[1] + minuteJitter, 0, 0);
+      return date.getTime();
+    }
+
+    function generateDemoData() {
+      const count = Math.max(10, Math.min(300, toNum($("demoCount").value, 40)));
+      const templates = buildCourseTemplates();
+      const records = [];
+
+      for (let i = 0; i < count; i += 1) {
+        const tpl = templates[Math.floor(Math.random() * templates.length)];
+        const weekOffset = 1 + Math.floor(Math.random() * 9);
+        const startTimeMs = buildTimeBySlot(tpl.weekday, tpl.time_slot, weekOffset);
+        const attendCount = Math.max(8, Math.round(tpl.base_count + (Math.random() - 0.5) * 14));
+        const lng = tpl.lng + (Math.random() - 0.5) * 0.004;
+        const lat = tpl.lat + (Math.random() - 0.5) * 0.004;
+
+        records.push({
+          session_id: 900000 + i,
+          time_label: formatDateTime(startTimeMs),
+          start_time_ms: startTimeMs,
+          room_id: "SIM-" + String(1000 + i),
+          title: "示例签到 " + (i + 1),
+          mode_label: Math.random() > 0.75 ? "活体" : "普通",
+          attend_count: attendCount,
+          weekday: tpl.weekday,
+          time_slot: tpl.time_slot,
+          lng: Number(lng.toFixed(6)),
+          lat: Number(lat.toFixed(6)),
+          course_id: i % 4 === 0 ? 0 : tpl.course_id,
+          cluster: -1,
+          distance_to_center: null,
+          recommended_course_id: null,
+        });
+      }
+
+      state.records = records.sort((a, b) => Number(a.start_time_ms) - Number(b.start_time_ms));
+      state.clusterResult = null;
+      renderAll();
+      setStatus("已生成 " + state.records.length + " 条示例数据。", "ok");
+    }
+
+    function featureFromRecord(rec) {
+      return {
+        weekday: toNum(rec.weekday, 1),
+        timeSlot: toNum(rec.time_slot, 1),
+        lng: toNum(rec.lng, DEFAULT_LNG),
+        lat: toNum(rec.lat, DEFAULT_LAT),
+        attendCount: toNum(rec.attend_count, 0),
+      };
+    }
+
+    function gpsDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function weightedDistance(p1, p2) {
+      const w = [0.40, 0.35, 0.18, 0.07];
+      let sum = 0;
+
+      const normWeek = (p1.weekday - 1) / 6;
+      const normWeek2 = (p2.weekday - 1) / 6;
+      sum += w[0] * Math.pow(normWeek - normWeek2, 2);
+
+      const normSlot = (p1.timeSlot - 1) / 7;
+      const normSlot2 = (p2.timeSlot - 1) / 7;
+      sum += w[1] * Math.pow(normSlot - normSlot2, 2);
+
+      const gpsDist = gpsDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+      const normGps = Math.min(1, gpsDist / 2.0);
+      sum += w[2] * Math.pow(normGps, 2);
+
+      const normCnt = Math.max(0, Math.min(1, (p1.attendCount - 5) / 70));
+      const normCnt2 = Math.max(0, Math.min(1, (p2.attendCount - 5) / 70));
+      sum += w[3] * Math.pow(normCnt - normCnt2, 2);
+
+      return Math.sqrt(sum);
+    }
+
+    function calculateSilhouetteQuality(features, assignments) {
+      if (!features.length) return 0;
+      let total = 0;
+      let valid = 0;
+      const uniqueClusters = [...new Set(assignments)];
+
+      for (let i = 0; i < features.length; i += 1) {
+        const clusterId = assignments[i];
+        let intraSum = 0;
+        let intraCount = 0;
+        for (let j = 0; j < features.length; j += 1) {
+          if (i !== j && assignments[j] === clusterId) {
+            intraSum += weightedDistance(features[i], features[j]);
+            intraCount += 1;
+          }
+        }
+        const a = intraCount > 0 ? intraSum / intraCount : 0;
+
+        let minInter = Infinity;
+        for (const otherCluster of uniqueClusters) {
+          if (otherCluster === clusterId) continue;
+          let interSum = 0;
+          let interCount = 0;
+          for (let j = 0; j < features.length; j += 1) {
+            if (assignments[j] === otherCluster) {
+              interSum += weightedDistance(features[i], features[j]);
+              interCount += 1;
+            }
+          }
+          if (interCount > 0) {
+            minInter = Math.min(minInter, interSum / interCount);
+          }
+        }
+        if (Number.isFinite(minInter) && (a + minInter > 0)) {
+          const score = (minInter - a) / Math.max(a, minInter);
+          total += score;
+          valid += 1;
+        }
+      }
+
+      const avg = valid > 0 ? total / valid : 0;
+      return Math.max(0, Math.min(100, (avg + 1) * 50));
+    }
+
+    function runKMeansInternal(features, requestedK) {
+      if (!features.length) {
+        return { assignments: [], centroids: [], inertia: 0, quality: 0 };
+      }
+      const k = Math.max(1, Math.min(requestedK, features.length));
+
+      const centroids = [];
+      const used = new Set();
+      while (centroids.length < k) {
+        const idx = Math.floor(Math.random() * features.length);
+        if (!used.has(idx)) {
+          used.add(idx);
+          centroids.push(Object.assign({}, features[idx]));
+        }
+      }
+
+      let assignments = new Array(features.length).fill(0);
+      let oldAssignments = new Array(features.length).fill(-1);
+      let iteration = 0;
+      while (iteration < 120) {
+        for (let i = 0; i < features.length; i += 1) {
+          let bestCluster = 0;
+          let minDistance = Infinity;
+          for (let c = 0; c < centroids.length; c += 1) {
+            const dist = weightedDistance(features[i], centroids[c]);
+            if (dist < minDistance) {
+              minDistance = dist;
+              bestCluster = c;
+            }
+          }
+          assignments[i] = bestCluster;
+        }
+
+        let changed = false;
+        for (let i = 0; i < assignments.length; i += 1) {
+          if (assignments[i] !== oldAssignments[i]) {
+            changed = true;
+            break;
+          }
+        }
+        if (!changed) break;
+        oldAssignments = assignments.slice();
+
+        for (let c = 0; c < centroids.length; c += 1) {
+          const members = [];
+          for (let i = 0; i < features.length; i += 1) {
+            if (assignments[i] === c) members.push(features[i]);
+          }
+          if (!members.length) continue;
+          centroids[c] = {
+            weekday: members.reduce((sum, item) => sum + item.weekday, 0) / members.length,
+            timeSlot: members.reduce((sum, item) => sum + item.timeSlot, 0) / members.length,
+            lng: members.reduce((sum, item) => sum + item.lng, 0) / members.length,
+            lat: members.reduce((sum, item) => sum + item.lat, 0) / members.length,
+            attendCount: members.reduce((sum, item) => sum + item.attendCount, 0) / members.length,
+          };
+        }
+
+        iteration += 1;
+      }
+
+      let inertia = 0;
+      for (let i = 0; i < features.length; i += 1) {
+        const dist = weightedDistance(features[i], centroids[assignments[i]]);
+        inertia += dist * dist;
+      }
+      const quality = calculateSilhouetteQuality(features, assignments);
+      return { assignments, centroids, inertia, quality };
+    }
+
+    function buildCourseProfiles() {
+      const grouped = new Map();
+      for (const rec of state.records) {
+        const cid = Number(rec.course_id || 0);
+        if (cid <= 0) continue;
+        if (!grouped.has(cid)) grouped.set(cid, []);
+        grouped.get(cid).push(featureFromRecord(rec));
+      }
+      const profiles = new Map();
+      for (const [cid, list] of grouped.entries()) {
+        profiles.set(cid, {
+          weekday: list.reduce((sum, item) => sum + item.weekday, 0) / list.length,
+          timeSlot: list.reduce((sum, item) => sum + item.timeSlot, 0) / list.length,
+          lng: list.reduce((sum, item) => sum + item.lng, 0) / list.length,
+          lat: list.reduce((sum, item) => sum + item.lat, 0) / list.length,
+          attendCount: list.reduce((sum, item) => sum + item.attendCount, 0) / list.length,
+        });
+      }
+      return profiles;
+    }
+
+    function mapClustersToCourse(result) {
+      const mapping = new Map();
+      const profiles = buildCourseProfiles();
+      const clusterCount = result.centroids.length;
+
+      for (let c = 0; c < clusterCount; c += 1) {
+        const freq = new Map();
+        for (let i = 0; i < state.records.length; i += 1) {
+          if (result.assignments[i] !== c) continue;
+          const cid = Number(state.records[i].course_id || 0);
+          if (cid > 0) freq.set(cid, (freq.get(cid) || 0) + 1);
+        }
+
+        let selectedCourse = 0;
+        let maxCount = 0;
+        for (const [cid, count] of freq.entries()) {
+          if (count > maxCount) {
+            maxCount = count;
+            selectedCourse = cid;
+          }
+        }
+
+        if (!selectedCourse && profiles.size) {
+          let nearestDistance = Infinity;
+          for (const [cid, profile] of profiles.entries()) {
+            const dist = weightedDistance(result.centroids[c], profile);
+            if (dist < nearestDistance) {
+              nearestDistance = dist;
+              selectedCourse = cid;
+            }
+          }
+        }
+
+        if (selectedCourse > 0) mapping.set(c, selectedCourse);
+      }
+      return mapping;
+    }
+
+    function runKMeans() {
+      if (!state.records.length) {
+        setStatus("当前没有可聚类的数据，请先加载真实数据或生成示例数据。", "err");
+        return;
+      }
+
+      let k = Math.max(2, Math.min(12, toNum($("kValue").value, 4)));
+      if (k > state.records.length) {
+        k = state.records.length;
+      }
+      $("kValue").value = String(k);
+      $("kDisplay").textContent = String(k);
+      setStatus("正在运行 KMeans 聚类...", "warn");
+
+      const features = state.records.map(featureFromRecord);
+      const result = runKMeansInternal(features, k);
+      const clusterCourseMap = mapClustersToCourse(result);
+
+      for (let i = 0; i < state.records.length; i += 1) {
+        const cluster = result.assignments[i];
+        state.records[i].cluster = cluster;
+        state.records[i].distance_to_center = weightedDistance(features[i], result.centroids[cluster]);
+        state.records[i].recommended_course_id = clusterCourseMap.get(cluster) || null;
+      }
+
+      state.clusterResult = {
+        k,
+        inertia: result.inertia,
+        quality: result.quality,
+        centers: result.centroids,
+        cluster_course_map: clusterCourseMap,
+      };
+      renderAll();
+      setStatus(
+        "聚类完成：K=" + k +
+        "，惯性=" + result.inertia.toFixed(4) +
+        "，质量=" + Math.round(result.quality) + "%。",
+        "ok"
+      );
+    }
+
+    function applyRecommendations() {
+      let changed = 0;
+      for (const rec of state.records) {
+        if (rec.recommended_course_id && rec.recommended_course_id > 0 && rec.course_id !== rec.recommended_course_id) {
+          rec.course_id = rec.recommended_course_id;
+          changed += 1;
+        }
+      }
+      renderAll();
+      setStatus("已应用推荐课程，更新 " + changed + " 条记录。", "ok");
+    }
+
+    function clearClusters() {
+      for (const rec of state.records) {
+        rec.cluster = -1;
+        rec.distance_to_center = null;
+        rec.recommended_course_id = null;
+      }
+      state.clusterResult = null;
+      renderAll();
+      setStatus("聚类结果已清空。", "warn");
+    }
+
+    function renderClusterSummary() {
+      const box = $("clusterSummary");
+      if (!state.clusterResult) {
+        box.innerHTML = "尚未执行聚类";
+        return;
+      }
+
+      const clusterSizes = new Map();
+      for (const rec of state.records) {
+        if (rec.cluster >= 0) {
+          clusterSizes.set(rec.cluster, (clusterSizes.get(rec.cluster) || 0) + 1);
+        }
+      }
+
+      const parts = [];
+      for (let i = 0; i < state.clusterResult.centers.length; i += 1) {
+        const center = state.clusterResult.centers[i];
+        const linkedCourse = state.clusterResult.cluster_course_map.get(i) || 0;
+        const courseLabel = linkedCourse > 0 ? getCourseLabel(linkedCourse) : "未匹配";
+        const size = clusterSizes.get(i) || 0;
+        parts.push(
+          '<span class="pill cluster-chip-' + (i % 5) + '">簇 ' + i +
+          " · " + courseLabel + " · " + size + " 条</span>" +
+          '<div class="muted">中心: 周' + center.weekday.toFixed(2) +
+          " / 时段" + center.timeSlot.toFixed(2) +
+          " / 经纬(" + center.lng.toFixed(5) + ", " + center.lat.toFixed(5) + ")" +
+          " / 人数" + center.attendCount.toFixed(1) + "</div>"
+        );
+      }
+      box.innerHTML = parts.join("<div style='height:8px'></div>");
+    }
+
+    function renderDataSummary() {
+      const box = $("dataSummary");
+      if (!state.records.length) {
+        box.textContent = "尚未加载数据";
+        return;
+      }
+      const courseCount = new Set(state.records.map((item) => Number(item.course_id || 0)).filter((v) => v > 0)).size;
+      const modeCount = {};
+      for (const rec of state.records) {
+        const key = rec.mode_label || "未知";
+        modeCount[key] = (modeCount[key] || 0) + 1;
+      }
+      box.innerHTML =
+        "时间范围: " + escapeHtml(state.records[0].time_label) + " - " + escapeHtml(state.records[state.records.length - 1].time_label) + "<br/>" +
+        "课程覆盖: " + courseCount + " 门<br/>" +
+        "模式分布: " + escapeHtml(JSON.stringify(modeCount));
+    }
+
+    function renderTable() {
+      const body = $("recordBody");
+      if (!state.records.length) {
+        body.innerHTML = '<tr><td colspan="12" class="muted">暂无数据</td></tr>';
+        return;
+      }
+
+      body.innerHTML = state.records.map((rec, idx) => {
+        const dist = rec.distance_to_center == null ? null : Number(rec.distance_to_center);
+        const width = dist == null ? 0 : Math.min(100, Math.round(dist * 95));
+        const clusterText = rec.cluster >= 0 ? ("簇 " + rec.cluster) : "未聚类";
+        const recCourse = rec.recommended_course_id && rec.recommended_course_id > 0
+          ? '<span class="chip">荐 ' + escapeHtml(getCourseLabel(rec.recommended_course_id)) + "</span>"
+          : "";
+
+        return `
+          <tr>
+            <td class="mono">${escapeHtml(rec.time_label)}</td>
+            <td class="mono">${escapeHtml(rec.room_id)}</td>
+            <td>${escapeHtml(rec.title)}</td>
+            <td>${escapeHtml(rec.mode_label)}</td>
+            <td><input type="number" min="0" max="9999" step="1" data-idx="${idx}" data-field="attend_count" value="${Number(rec.attend_count)}" /></td>
+            <td><input type="number" min="1" max="7" step="1" data-idx="${idx}" data-field="weekday" value="${Number(rec.weekday)}" /></td>
+            <td><input type="number" min="1" max="8" step="1" data-idx="${idx}" data-field="time_slot" value="${Number(rec.time_slot)}" /></td>
+            <td><input type="number" step="0.000001" data-idx="${idx}" data-field="lng" value="${Number(rec.lng).toFixed(6)}" /></td>
+            <td><input type="number" step="0.000001" data-idx="${idx}" data-field="lat" value="${Number(rec.lat).toFixed(6)}" /></td>
+            <td>
+              <select data-idx="${idx}" data-field="course_id">
+                ${buildCourseOptions(rec.course_id)}
+              </select>
+              ${recCourse}
+            </td>
+            <td>
+              <div class="distance">
+                <div class="bar"><div class="fill" style="width:${width}%"></div></div>
+                <span class="mono">${escapeHtml(clusterText)}${dist == null ? "" : " " + dist.toFixed(3)}</span>
+              </div>
+            </td>
+            <td>
+              <button class="btn-mini btn-soft" data-action="export-course" data-course="${Number(rec.course_id)}">导出该课</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function updateMetrics() {
+      const total = state.records.length;
+      const clustered = state.records.filter((rec) => rec.cluster >= 0).length;
+      const courses = new Set(state.records.map((rec) => Number(rec.course_id || 0)).filter((cid) => cid > 0)).size;
+      const avgCount = total ? state.records.reduce((sum, rec) => sum + Number(rec.attend_count || 0), 0) / total : 0;
+      $("metricTotal").textContent = String(total);
+      $("metricClustered").textContent = String(clustered);
+      $("metricCourses").textContent = String(courses);
+      $("metricAvgCount").textContent = total ? avgCount.toFixed(1) : "0";
+    }
+
+    function renderAll() {
+      renderTable();
+      updateMetrics();
+      updateExportCourseOptions();
+      renderClusterSummary();
+      renderDataSummary();
+    }
+
+    function toTimeColumnLabel(timeText) {
+      const date = new Date(String(timeText).replace(/-/g, "/"));
+      if (!Number.isFinite(date.getTime())) return "T_000000000000";
+      const year = String(date.getFullYear()).slice(-2);
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const hour = String(date.getHours()).padStart(2, "0");
+      const minute = String(date.getMinutes()).padStart(2, "0");
+      const second = String(date.getSeconds()).padStart(2, "0");
+      return "T_" + year + month + day + hour + minute + second;
+    }
+
+    function parseDownloadName(contentDisposition, fallbackName) {
+      if (!contentDisposition) return fallbackName;
+      const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utf8Match && utf8Match[1]) {
+        try {
+          return decodeURIComponent(utf8Match[1]);
+        } catch (_) {}
+      }
+      const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+      if (basicMatch && basicMatch[1]) {
+        return basicMatch[1];
+      }
+      return fallbackName;
+    }
+
+    async function downloadCourseAttendance(courseId) {
+      const cid = Number(courseId || 0);
+      if (!cid) {
+        setStatus("请选择有效课程后再导出。", "err");
+        return;
+      }
+
+      const courseName = getCourseLabel(cid);
+      const courseRecords = state.records
+        .filter((rec) => Number(rec.course_id) === cid)
+        .sort((a, b) => Number(a.start_time_ms) - Number(b.start_time_ms));
+
+      if (!courseRecords.length) {
+        setStatus("课程「" + courseName + "」没有可导出的场次。", "warn");
+        return;
+      }
+
+      const maxAttend = Math.max(...courseRecords.map((rec) => Number(rec.attend_count || 0)), 20);
+      const studentCount = Math.min(Math.max(20, maxAttend), STUDENT_DB.length);
+      const students = STUDENT_DB.slice(0, studentCount);
+      const uniqueTimes = courseRecords.map((rec) => rec.time_label);
+
+      const attendanceMap = new Map();
+      for (const stu of students) {
+        attendanceMap.set(stu.sid, {
+          sid: stu.sid,
+          name: stu.name,
+          checkins: new Map(),
+          total_checkin: 0,
+          revoked_checkin: 0,
+          choice_question: 0,
+          short_answer_question: 0,
+        });
+      }
+
+      for (let i = 0; i < uniqueTimes.length; i += 1) {
+        const rec = courseRecords[i];
+        const expectedCount = Math.min(Math.max(0, Math.round(Number(rec.attend_count || 0))), students.length);
+        const shuffled = students.slice();
+        for (let j = shuffled.length - 1; j > 0; j -= 1) {
+          const k = Math.floor(Math.random() * (j + 1));
+          const temp = shuffled[j];
+          shuffled[j] = shuffled[k];
+          shuffled[k] = temp;
+        }
+        const checkedSet = new Set(shuffled.slice(0, expectedCount).map((item) => item.sid));
+        for (const stu of students) {
+          const row = attendanceMap.get(stu.sid);
+          const checked = checkedSet.has(stu.sid) ? 1 : 0;
+          row.checkins.set(uniqueTimes[i], checked);
+          row.total_checkin += checked;
+        }
+      }
+
+      const headers = [
+        "sid",
+        "name",
+        ...uniqueTimes.map(toTimeColumnLabel),
+        "total_checkin",
+        "revoked_checkin",
+        "choice_question",
+        "short_answer_question",
+        "short_answer_question",
+      ];
+
+      const lines = [headers.join("\t\t")];
+      for (const stu of students) {
+        const row = attendanceMap.get(stu.sid);
+        const cells = [
+          row.sid,
+          row.name,
+          ...uniqueTimes.map((timeLabel) => row.checkins.get(timeLabel) || 0),
+          row.total_checkin,
+          row.revoked_checkin,
+          row.choice_question,
+          row.short_answer_question,
+          "short_answer_question",
+        ];
+        lines.push(cells.join("\t\t"));
+      }
+
+      const txtContent = "\uFEFF" + lines.join("\n");
+      const txtBlob = new Blob([txtContent], { type: "text/plain;charset=utf-8" });
+      const file = new File([txtBlob], courseName + "_签到明细.txt", { type: "text/plain;charset=utf-8" });
+      const formData = new FormData();
+      formData.append("file", file);
+
+      setStatus("正在导出课程「" + courseName + "」的 Excel...", "warn");
+      const resp = await fetch("/api/excel/generate", { method: "POST", body: formData });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(detail || ("导出失败，状态码 " + resp.status));
+      }
+
+      const fallbackName = courseName + "_签到明细.xlsx";
+      const downloadName = parseDownloadName(resp.headers.get("Content-Disposition"), fallbackName);
+      const excelBlob = await resp.blob();
+      const url = URL.createObjectURL(excelBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus("Excel 已导出：" + downloadName, "ok");
+    }
+
+    $("recordBody").addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const idx = Number(target.getAttribute("data-idx"));
+      const field = target.getAttribute("data-field");
+      if (!Number.isFinite(idx) || !field || !state.records[idx]) return;
+
+      const record = state.records[idx];
+      const value = "value" in target ? target.value : "";
+      if (field === "course_id" || field === "weekday" || field === "time_slot" || field === "attend_count") {
+        record[field] = Math.max(0, Math.round(toNum(value, record[field] || 0)));
+      } else if (field === "lng" || field === "lat") {
+        record[field] = toNum(value, record[field]);
+      }
+      renderAll();
+    });
+
+    $("recordBody").addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const button = target.closest("button[data-action]");
+      if (!button) return;
+      const action = button.getAttribute("data-action");
+      if (action !== "export-course") return;
+      const courseId = Number(button.getAttribute("data-course") || 0);
+      try {
+        await downloadCourseAttendance(courseId);
+      } catch (err) {
+        setStatus((err && err.message) ? err.message : String(err), "err");
+      }
+    });
+
+    $("kValue").addEventListener("input", (event) => {
+      $("kDisplay").textContent = String(event.target.value || "4");
+    });
+
+    $("btnBackDashboard").addEventListener("click", () => {
+      window.location.href = "/app/dashboard";
+    });
+
+    $("btnReloadData").addEventListener("click", async () => {
+      try {
+        await loadRealData();
+      } catch (err) {
+        setStatus((err && err.message) ? err.message : String(err), "err");
+      }
+    });
+
+    $("btnGenerateDemo").addEventListener("click", () => {
+      generateDemoData();
+    });
+
+    $("btnRunCluster").addEventListener("click", () => {
+      runKMeans();
+    });
+
+    $("btnApplyRecommendation").addEventListener("click", () => {
+      applyRecommendations();
+    });
+
+    $("btnClearCluster").addEventListener("click", () => {
+      clearClusters();
+    });
+
+    $("btnExportExcel").addEventListener("click", async () => {
+      const courseId = Number($("exportCourseId").value || 0);
+      try {
+        await downloadCourseAttendance(courseId);
+      } catch (err) {
+        setStatus((err && err.message) ? err.message : String(err), "err");
+      }
+    });
+
+    $("btnLogout").addEventListener("click", async () => {
+      try {
+        await api("/auth/logout", { method: "POST" });
+      } catch (_) {}
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = "/app/login";
+    });
+
+    async function init() {
+      if (!token) {
+        window.location.href = "/app/login";
+        return;
+      }
+      try {
+        await api("/auth/me");
+        await loadCourses();
+        await loadRealData();
+      } catch (err) {
+        localStorage.removeItem(TOKEN_KEY);
+        alert((err && err.message) ? err.message : String(err));
+        window.location.href = "/app/login";
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

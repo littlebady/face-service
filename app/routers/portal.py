@@ -489,7 +489,7 @@ async def app_dashboard_page() -> str:
       <div class="actions">
         <button class="btn-soft" id="btnRefresh">刷新</button>
         <button class="btn-soft" id="btnProfile">个人主页</button>
-        <button class="btn-soft" id="btnLegacy">旧版首页</button>
+        <button class="btn-soft" id="btnAnalysis">数据分析</button>
         <button class="btn-dark" id="btnLogout">退出</button>
       </div>
     </section>
@@ -936,8 +936,8 @@ async def app_dashboard_page() -> str:
       }
     });
 
-    $("btnLegacy").addEventListener("click", () => {
-      window.location.href = "/checkin-ui";
+    $("btnAnalysis").addEventListener("click", () => {
+      window.location.href = "/analysis-ui";
     });
 
     $("btnProfile").addEventListener("click", () => {

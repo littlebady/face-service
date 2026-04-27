@@ -10,7 +10,7 @@ router = APIRouter(tags=["Legacy Pages"])
 
 _BASE_DIR = Path(__file__).resolve().parents[2]
 _CHECKIN_UI_PATH = (_BASE_DIR / "checkin-ui-standalone.html").resolve()
-_ANALYSIS_UI_PATH = (_BASE_DIR / "checkinexcel" / "test.html").resolve()
+_ANALYSIS_UI_PATH = (_BASE_DIR / "app" / "static" / "analysis-ui.html").resolve()
 _ANALYSIS_BTN_MARKER = 'data-role="analysis-entry-btn"'
 
 
@@ -93,9 +93,9 @@ def _load_analysis_ui_html() -> str:
     html = _load_html_page(
         _ANALYSIS_UI_PATH,
         page_name="数据分析页面",
-        file_name="checkinexcel/test.html",
+        file_name="app/static/analysis-ui.html",
     )
-    return html.replace("http://localhost:8080/api/excel/generate", "/api/excel/generate")
+    return html
 
 
 @router.get("/", include_in_schema=False)
