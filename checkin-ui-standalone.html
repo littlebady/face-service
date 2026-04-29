@@ -1717,7 +1717,7 @@
       refreshLivenessUi();
     }
 
-    async function ensureLivenessEngine() {
+    async function ensureLivenessEngine() { // 由ai编写
       await ensureMediapipeLoaded();
       if (liveness.engineReady && liveness.engine) return;
       const base = mediapipeBaseUrl();
@@ -1766,7 +1766,7 @@
       }
     }
 
-    async function startLivenessCheck() {
+    async function startLivenessCheck() { // 由ai编写
       resetLivenessProgress();
       if (LIVE_MODE === 'strict') {
         const challenge = await fetchStrictLivenessChallenge();
@@ -1894,7 +1894,7 @@
       return { data: capturedBlob, name: `checkin-${Date.now()}.jpg` };
     }
 
-    async function refreshDashboard() {
+    async function refreshDashboard() { // 由ai编写
       if (isSessionMode) {
         const session = await loadSessionInfo();
         if (!session) {

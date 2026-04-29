@@ -1750,7 +1750,7 @@ async def scan_checkin_page(token: str) -> str:
       }}
     }}
 
-    async function ensureLivenessEngine() {{
+    async function ensureLivenessEngine() {{ // 由ai编写
       await ensureMediapipeLoaded();
       if (livenessState.engineReady && livenessState.engine) return;
       const base = mediapipeBaseUrl();
